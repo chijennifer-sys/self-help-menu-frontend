@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Backend repository
+    url: https://github.com/chijennifer-sys/self-help-menu-backend
+    about: The Google Sheet, the script, personal links, and the /exec address are set up in the backend repository, not here.

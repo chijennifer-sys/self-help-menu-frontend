@@ -1,0 +1,75 @@
+name: Feature or wording change
+description: A change to what the menu says or what it does.
+title: "Change: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask for one change. One issue is one day's work.
+
+        Wording for a question lives in `assets/content.js`. How the page
+        behaves lives in `assets/app.js`. Colours and layout live in
+        `assets/styles.css` and follow `DESIGN-SYSTEM.md`.
+
+        Keep the participant voice if you change words: short sentences, one
+        idea each, jargon explained every time. Say "tax overages", never
+        "tax refund". Say "fingerprinting", never "casino licence".
+
+        Do not paste a real Student ID, a personal link, or a participant's
+        name.
+  - type: textarea
+    id: want
+    attributes:
+      label: What should the menu do, or say, after this change?
+      placeholder: The housing tile should tell them to write the full address, including the apartment number.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Which part of the menu?
+      description: Board name and question title, or "the whole page".
+      placeholder: I am still in my country → Where do I verify my housing
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of change is this?
+      options:
+        - The words on one question
+        - A new question
+        - How the page behaves
+        - How the page looks
+        - I am not sure
+    validations:
+      required: true
+  - type: textarea
+    id: words
+    attributes:
+      label: Exact words, if you already know them
+      description: Write the old sentence and the new sentence. Leave blank if you want the editor to draft it in the same voice.
+      placeholder: |
+        Now: Keep the receipt.
+        Change to: Keep the paper they give you. Your employer will ask for it.
+  - type: textarea
+    id: leave
+    attributes:
+      label: What must not change?
+      placeholder: Do not change the other housing questions. Do not change the red or the logo.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: How will we know it is done?
+      description: What you will look at on the live menu after the update.
+      placeholder: Open that housing question with demo 52341. The new sentence is there. The other questions on that board are unchanged.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does this matter?
+      description: Optional. A note on how often participants ask, or what goes wrong today.

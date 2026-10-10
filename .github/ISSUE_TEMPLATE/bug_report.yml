@@ -1,0 +1,86 @@
+name: Bug report
+description: Something on the menu is wrong, missing, or hard to use.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe one problem. One issue is one fix.
+
+        The public menu is this repository. Roster, Google Sheet, and script
+        problems belong in
+        [self-help-menu-backend](https://github.com/chijennifer-sys/self-help-menu-backend).
+
+        Do not paste a real Student ID, a date of birth, a personal link, or
+        a participant's name. Say "a demo button" or "a real student" instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What went wrong?
+      description: In your own words. What were you trying to do?
+      placeholder: I tapped the Social Security question and the date was blank.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where on the menu?
+      description: The board name and the question title, if you can see them.
+      placeholder: I am working → When do I get paid
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: who
+    attributes:
+      label: Whose answers were on the screen?
+      options:
+        - I had not signed in. I was just browsing.
+        - I used a demo button (52341, 53880, 61200, or Ivan).
+        - I used a real personal link or a real Student ID.
+        - I am not sure.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone or computer, and the browser if you know it
+      placeholder: Android phone, Chrome
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it again
+      description: Number them. Start from opening the menu.
+      placeholder: |
+        1. Open the menu.
+        2. Tap 52341.
+        3. Open "How early can I arrive".
+  - type: textarea
+    id: done
+    attributes:
+      label: How will we know it is fixed?
+      description: One or two sentences a person can check on the live menu.
+      placeholder: The arrival tile for 52341 shows a real date, and no {token} is left on the screen.
+    validations:
+      required: true
+  - type: textarea
+    id: leave
+    attributes:
+      label: What should stay the same?
+      description: Other questions, colours, or wording that must not move while this is fixed.
+      placeholder: Do not change any other tile.
+  - type: textarea
+    id: shot
+    attributes:
+      label: Screenshot
+      description: Drag a picture into this box if you have one. Cover any real name or Student ID first.

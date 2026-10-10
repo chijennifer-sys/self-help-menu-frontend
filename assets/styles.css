@@ -1,0 +1,599 @@
+:root{
+  color-scheme:light;
+
+  /* CHI Red. RGB 157 34 53, CMYK 0 100 63 31. Never substituted. */
+  --chi:#9D2235;
+  --chi-deep:#7A1A29;          /* pressed and hover state of a chi-red fill */
+  --chi-soft:#F5E9EB;          /* chi-red at 8 percent, for panels the red rule marks */
+  --on-chi:#FFFFFF;
+
+  /* charcoal and surface */
+  --ink:#303030;               /* body and headline ink, 13:1 on surface */
+  --ink-2:#5C5C5C;
+  --ink-3:#8A8A8A;
+  --ground:#FFFFFF;
+  --card:#FFFFFF;
+  --raise:#FAFAFA;
+  --panel:#F4F4F4;             /* charcoal at 4 percent, quiet panels */
+  --rule:#DCDCDC;
+  --rule-2:#EFEFEF;
+
+  /* The five boards are no longer told apart by hue. They carry the same
+     charcoal, and chi-red is kept for where the participant is, what they
+     must do, and when it is due. */
+  --s1:#303030; --s2:#303030; --s3:#303030; --s4:#303030; --s5:#303030;
+  --s1-soft:#F4F4F4; --s2-soft:#F4F4F4; --s3-soft:#F4F4F4;
+  --s4-soft:#F4F4F4; --s5-soft:#F4F4F4;
+
+  /* routes: charcoal, because the tile already says what each one does */
+  --ok:#303030;     --ok-soft:#F4F4F4;
+  --file:#9D2235;   --file-soft:#F5E9EB;    /* the one that starts a tracked record */
+  --team:#303030;   --team-soft:#F4F4F4;
+  --agency:#5C5C5C; --agency-soft:#F4F4F4;
+  --mo:#5C5C5C;
+
+  --focus:#9D2235;
+  --shadow:none;
+  --shadow-sm:none;
+
+  --sans:'Poppins',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Poppins',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --wrap:600px;
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%; text-size-adjust:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:16px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0; text-wrap:balance; font-weight:700; line-height:1.25}
+p{margin:0}
+button{font:inherit; color:inherit; background:none; border:none; cursor:pointer}
+a{color:var(--chi)}
+:focus-visible{outline:2.5px solid var(--focus); outline-offset:2px; border-radius:0}
+@media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+
+.shell{max-width:var(--wrap); margin:0 auto; padding:0 16px calc(96px + env(safe-area-inset-bottom, 0px))}
+
+/* header */
+.top{
+  position:sticky; top:0; z-index:40; background:var(--ground);
+  border-bottom:1px solid var(--rule); padding:0 16px;
+}
+.top-in{max-width:var(--wrap); margin:0 auto; display:flex; align-items:center; gap:12px; height:56px}
+.mark{display:flex; align-items:center; gap:9px; margin-right:auto; min-width:0}
+.mark-dot{width:22px; height:22px; border-radius:0; background:var(--chi); flex:none;
+  display:grid; place-items:center; color:var(--on-chi); font-size:11px; font-weight:700; letter-spacing:.02em}
+.mark-txt{font-size:13px; font-weight:700; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.viewsw{display:flex; background:var(--rule-2); border-radius:0; padding:3px; gap:2px; flex:none}
+.viewsw button{
+  font-size:11px; font-weight:700; padding:0 10px; min-height:36px; border-radius:0; color:var(--ink-3);
+  letter-spacing:.01em; transition:background .15s, color .15s;
+}
+.viewsw button[aria-pressed="true"]{background:var(--card); color:var(--ink); box-shadow:none}
+
+/* search */
+.searchwrap{padding:9px 0 3px; display:none}
+.searchwrap.open{display:block}
+.iconbtn{
+  width:38px; height:38px; border-radius:0; display:grid; place-items:center;
+  color:var(--ink-2); flex:none;
+}
+.iconbtn:hover, .iconbtn[aria-expanded="true"]{background:var(--rule-2); color:var(--chi)}
+.search{
+  display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--rule);
+  border-radius:0; padding:0 13px; height:42px; box-shadow:none;
+}
+.search svg{flex:none; color:var(--ink-3)}
+.search input{
+  flex:1; border:none; background:none; font:inherit; font-size:16px; color:var(--ink);
+  height:100%; outline:none; min-width:0;
+}
+.search input::placeholder{color:var(--ink-3)}
+.search button{color:var(--ink-3); font-size:13px; font-weight:700; padding:0 6px; min-height:36px}
+
+/* hero question */
+.ask{padding:9px 2px 6px}
+.ask h1{font-size:19px; letter-spacing:-.02em}
+.asklab{
+  font-family:var(--mono); font-size:9.5px; font-weight:400; letter-spacing:.01em; color:var(--ink-3);
+}
+.ask p{color:var(--ink-2); font-size:14.5px; margin-top:6px}
+
+/* tile grid */
+.grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:2px 0 2px}
+.tile{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:5px; background:var(--card); border:1.3px solid var(--tl,var(--rule));
+  border-radius:0; padding:9px 7px 8px; min-height:88px; text-align:center;
+  transition:border-color .18s ease, transform .18s ease, background .18s ease;
+}
+.tile:hover{transform:translateY(-2px); border-color:var(--tc,var(--chi)); background:var(--ts,var(--card))}
+.tile:active{transform:translateY(0)}
+.tile .ico{color:var(--tc,var(--chi)); opacity:.85; flex:none}
+.tile .lab{
+  font-size:13px; font-weight:400; line-height:1.25; letter-spacing:-.005em;
+  color:var(--tc,var(--ink)); text-wrap:balance;
+}
+.tile .sub{font-size:11.5px; color:var(--ink-3); line-height:1.3; margin-top:-2px}
+.tile .rt{padding-top:5px !important;
+  font-family:var(--mono); font-size:8.5px; font-weight:400; letter-spacing:.01em;
+  color:var(--ink-3); margin-top:auto; padding-top:8px;
+}
+.grid.q4{gap:7px}
+.grid.q4 .tile{min-height:64px; border-radius:0; gap:4px; padding:9px 7px 8px}
+.grid.q4 .lab{font-size:12.5px; font-weight:700; line-height:1.2; letter-spacing:-.01em}
+
+@media (max-width:370px){
+  .grid{gap:9px}
+  .tile{min-height:102px; padding:11px 7px 9px; border-radius:0}
+  .tile .lab{font-size:12.5px}
+}
+@media (max-height:780px){
+  .grid{gap:4px}
+  .tile{min-height:54px; padding:6px 6px 6px; border-radius:0; gap:3px}
+  .tile .ico{width:28px; height:28px}
+  .tile .lab{font-size:12px; line-height:1.18}
+  .grid.q4 .tile{min-height:58px; padding:8px 6px 7px}
+  .grid.q4 .lab{font-size:12px}
+  .strip{padding:4px 11px}
+  .board{padding:5px 2px 0}
+  .board h2{font-size:14px; margin-bottom:4px}
+  .chip{min-height:31px; font-size:11px; padding:0 9px}
+  .sect-h.tight{padding:4px 2px 5px}
+  .searchwrap{padding:7px 0 2px}
+}
+@media (max-height:720px){
+  .grid.q4 .tile{min-height:56px; gap:3px}
+  .grid.q4 .ico{width:21px; height:21px}
+  .grid.q4 .lab{font-size:12px}
+  .ask{padding:7px 2px 6px}
+  .ask h1{font-size:17px}
+  .preview{padding:6px 9px; font-size:11px}
+}
+@media (max-height:640px){
+  .tile{min-height:60px; padding:5px 5px 5px}
+  .tile .ico{width:22px; height:22px}
+  .tile .lab{font-size:11.5px}
+  .strip{padding:5px 10px}
+  .board{padding:5px 2px 0}
+  .board h2{font-size:13.5px; margin-bottom:4px}
+  .chip{min-height:29px; font-size:10.5px; padding:0 8px}
+  .sect-h.tight{padding:3px 2px 4px}
+}
+
+.crumb{display:flex; align-items:center; gap:8px; padding:16px 2px 4px; font-size:13px; color:var(--ink-2)}
+.crumb button{display:flex; align-items:center; gap:5px; font-size:13px; font-weight:700; color:var(--chi); min-height:36px; padding:0 2px}
+.board{padding:9px 2px 0}
+.board h2{font-size:16px; letter-spacing:-.02em; color:var(--tc); margin-bottom:7px}
+.switch{display:flex; flex-wrap:wrap; gap:5px}
+
+.chip{
+  flex:none; font-size:11.5px; font-weight:400; letter-spacing:-.005em; white-space:nowrap;
+  border:1px solid var(--rule); border-radius:0; padding:0 10px; min-height:34px; color:var(--ink-2);
+  background:var(--card); display:flex; align-items:center; gap:6px; transition:all .15s;
+}
+.chip:hover{border-color:var(--tc); color:var(--tc)}
+.chip.on{background:var(--ts); border-color:var(--tc); color:var(--tc); font-weight:700}
+.chip .dot{width:5px; height:5px; border-radius:0; background:var(--tc); flex:none}
+.sect-h{padding:4px 2px 8px}
+.sect-h h2{font-size:19px; letter-spacing:-.02em}
+.sect-h p{font-size:14px; color:var(--ink-2); margin-top:4px}
+.sect-h.tight{padding:7px 2px 7px}
+.sect-h.tight p{font-size:12.5px; margin-top:0; line-height:1.4}
+.chev{display:none}
+.band{
+  font-size:12px; font-weight:700; letter-spacing:.01em;
+  color:var(--tc,var(--ink-3)); padding:22px 2px 2px; display:flex; align-items:center; gap:12px;
+}
+.band::after{content:''; flex:1; height:1px; background:var(--rule)}
+.band:first-child{padding-top:2px}
+
+/* identify + status strip */
+.idcard{
+  background:var(--card); border:1.4px solid var(--rule); border-radius:0;
+  padding:18px 16px 16px; margin:14px 0 4px; box-shadow:none;
+}
+.idcard h2{font-size:17px; letter-spacing:-.01em}
+.idcard p{font-size:13.5px; color:var(--ink-2); margin-top:5px; line-height:1.5}
+.idrow{display:flex; gap:8px; margin-top:13px}
+.idrow input{
+  flex:1; min-width:0; height:40px; border:1px solid var(--rule); background:var(--ground);
+  border-radius:0; padding:0 12px; font:inherit; font-size:16px; color:var(--ink); outline:none;
+}
+.idrow input:focus{border-color:var(--chi)}
+.idcard .go{margin-top:9px}
+.dobrow{margin-top:8px}
+.dobrow input{flex:1 1 0; min-width:0; -webkit-appearance:none; appearance:none; color:var(--ink)}
+.dobrow input::-webkit-date-and-time-value{text-align:left}
+.dobrow input:invalid, .dobrow input:not(:valid){color:var(--ink-3)}
+.idhint{font-size:12px; color:var(--ink-3); margin-top:7px; line-height:1.45}
+.idcard.slim{padding:9px 11px 10px; border-radius:0; margin:8px 0 2px}
+.idcard.slim h2{font-size:13px; line-height:1.3; font-weight:700}
+.idcard.slim p{font-size:12.5px; margin-top:3px}
+.idcard.slim .idrow{margin-top:7px}
+.act.inline{width:auto; flex:none; margin-top:0; padding:0 14px; height:40px; font-size:14px; border-radius:0}
+body.locked .tile{opacity:.58; filter:grayscale(.6); transition:opacity .18s ease, filter .18s ease}
+body.locked .tile:hover,
+body.locked .tile:focus-visible{opacity:.82; filter:grayscale(.2); transform:translateY(-2px)}
+body.locked .band{opacity:.55}
+body.locked .ask h1{opacity:.85}
+.sample{border:1px solid var(--rule); border-radius:0; overflow:hidden; background:var(--ground)}
+.sample-h{
+  display:flex; align-items:center; gap:10px; padding:9px 13px; border-bottom:1px solid var(--rule);
+  background:var(--card);
+}
+.sample-l{
+  flex:1; font-family:var(--mono); font-size:10px; font-weight:400; letter-spacing:.01em; color:var(--ink-3);
+}
+.copy{font-size:12px; font-weight:700; color:var(--chi); padding:7px 9px; border-radius:0; flex:none; min-height:34px}
+.copy:hover{background:var(--chi-soft)}
+.sample-t{padding:13px; font-size:14.5px; line-height:1.65; color:var(--ink)}
+.lock{background:var(--ground); border:1px dashed var(--rule); border-radius:0; padding:15px 15px 14px}
+.lock-l{
+  font-family:var(--mono); font-size:10px; font-weight:400; letter-spacing:.01em;
+  color:var(--ink-3); display:block; margin-bottom:6px;
+}
+.lock p{font-size:14.5px; line-height:1.55; color:var(--ink-2)}
+.lock .idrow{margin-top:12px}
+.idskip{
+  display:block; width:100%; text-align:center; margin-top:8px; font-size:13px;
+  font-weight:400; color:var(--ink-3); padding:9px; min-height:38px;
+}
+.idskip:hover{color:var(--chi)}
+.iderr{font-size:13px; color:var(--chi); margin-top:9px; font-weight:400}
+.preview{
+  margin-top:8px; padding:7px 10px; border:1px dashed var(--rule); border-radius:0;
+  font-size:11.5px; line-height:1.6; color:var(--ink-3); background:var(--ground);
+  display:flex; align-items:center; gap:5px; flex-wrap:wrap;
+}
+.preview-l{
+  font-family:var(--mono); font-size:9px; font-weight:400; letter-spacing:.1em;
+  color:var(--ink-3); line-height:1.4;
+}
+.try{
+  font-family:var(--mono); font-size:11px; font-weight:400; color:var(--chi);
+  background:var(--chi-soft); border-radius:0; padding:3px 6px;
+}
+.try:hover{background:var(--chi); color:var(--on-chi)}
+.picks{display:flex; flex-direction:column; gap:7px; margin-top:13px}
+.pick{
+  display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; text-align:left;
+  border:1px solid var(--rule); border-radius:0; padding:11px 13px; background:var(--ground);
+  transition:border-color .15s;
+}
+.pick:hover{border-color:var(--chi); background:var(--chi-soft)}
+.pick-n{font-size:15px; font-weight:700; letter-spacing:-.01em}
+.pick-d{font-size:12px; color:var(--ink-3); font-family:var(--mono)}
+
+.strip{
+  display:flex; align-items:center; gap:11px; background:var(--card);
+  border:1.3px solid var(--rule); border-left:4px solid var(--sc,var(--chi));
+  border-radius:0; padding:6px 11px; margin:8px 0 0; box-shadow:none;
+}
+.strip-b{flex:1; min-width:0}
+.strip-n{font-size:13.5px; font-weight:700; letter-spacing:-.01em}
+.strip-d{
+  font-size:10.5px; color:var(--ink-3); font-family:var(--mono); margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums;
+}
+.strip button{font-size:12px; font-weight:700; color:var(--chi); flex:none; padding:9px 5px; min-height:38px}
+.here{
+  font-family:var(--mono); font-size:9px; font-weight:400; letter-spacing:.1em;
+  background:var(--tc); color:var(--card); padding:3px 8px; border-radius:0; margin-top:2px;
+}
+.you{
+  background:var(--s2-soft); border-left:3px solid var(--s2); border-radius:0;
+  padding:13px 14px; font-size:15px; line-height:1.55;
+}
+.you .yl{
+  font-family:var(--mono); font-size:10.5px; font-weight:400; letter-spacing:.01em;
+  color:var(--s2); display:block; margin-bottom:5px;
+}
+.you b{font-weight:700}
+.code{
+  background:var(--ground); border:1px solid var(--rule); border-radius:0; padding:13px;
+  font-family:var(--mono); font-size:11.5px; line-height:1.6; overflow-x:auto; white-space:pre;
+  color:var(--ink-2); margin-top:10px;
+}
+
+
+/* route pill */
+.pill{
+  font-size:10.5px; font-weight:700; letter-spacing:.045em;
+  padding:3px 8px; border-radius:0; flex:none; white-space:nowrap;
+}
+.pill.Answer{background:var(--ok-soft); color:var(--ok)}
+.pill.File{background:var(--file-soft); color:var(--file)}
+.pill.Team{background:var(--team-soft); color:var(--team)}
+.pill.Agency{background:var(--agency-soft); color:var(--agency)}
+
+/* leaf */
+.leaf{background:var(--card); border:1px solid var(--rule); border-radius:0; box-shadow:none; overflow:hidden}
+.leaf-h{padding:20px 18px 16px; border-bottom:1px solid var(--rule-2); background:var(--raise)}
+.leaf-h h2{font-size:21px; letter-spacing:-.02em; margin-bottom:9px}
+.leaf-meta{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.leaf-b{padding:18px}
+.leaf-b > * + *{margin-top:14px}
+.leaf-b p{font-size:15.5px; line-height:1.6}
+.lead{font-size:16.5px; font-weight:400; line-height:1.5}
+.note{
+  background:var(--chi-soft); border-radius:0; padding:13px 14px; font-size:14.5px;
+  line-height:1.55; border-left:3px solid var(--chi);
+}
+.note strong{font-weight:700}
+.clock{background:var(--file-soft); border-left-color:var(--file)}
+.clock .clock-l{
+  font-family:var(--mono); font-size:10.5px; font-weight:400; letter-spacing:.01em;
+  color:var(--file); display:block; margin-bottom:4px;
+}
+.need{border:1px solid var(--rule); border-radius:0; padding:13px 14px; background:var(--ground)}
+.need h4{font-size:12px; letter-spacing:.01em; color:var(--ink-3); margin-bottom:8px}
+.need ul{margin:0; padding-left:18px; font-size:14.5px; line-height:1.6}
+.need li + li{margin-top:3px}
+.act{
+  display:flex; align-items:center; justify-content:center; gap:8px; width:100%;
+  background:var(--chi); color:var(--on-chi); border-radius:0; padding:14px; font-size:15.5px; font-weight:700;
+  text-decoration:none; letter-spacing:-.01em; transition:background .15s;
+}
+.act:hover{background:var(--chi-deep)}
+.act.ghost{background:transparent; color:var(--chi); border:1.5px solid var(--rule)}
+.act.ghost:hover{background:var(--chi-soft)}
+
+/* persistent bar */
+.bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:50;
+  padding:7px 16px calc(11px + env(safe-area-inset-bottom, 0px));
+  background:linear-gradient(to top, var(--ground) 62%, transparent);
+}
+.bar-in{max-width:var(--wrap); margin:0 auto; display:flex; gap:7px}
+.bar button{
+  display:flex; align-items:center; justify-content:center; gap:7px; flex:1 1 0; min-width:0;
+  background:var(--card); border:1px solid var(--rule); border-radius:0; padding:10px 8px;
+  font-size:13.5px; font-weight:700; box-shadow:none; color:var(--ink);
+}
+.bar button svg{flex:0 0 auto}
+.bar button span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.bar button:hover{border-color:var(--chi); color:var(--chi)}
+#portal{flex:0 1 auto}
+
+/* wiring view */
+.wire{padding-top:16px}
+.wire-lead{padding:0 2px 16px}
+.wire-lead h1{font-size:24px; letter-spacing:-.02em}
+.wire-lead p{color:var(--ink-2); font-size:14.5px; margin-top:6px; max-width:60ch}
+.stat{display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:8px; margin:16px 0 22px}
+.stat div{background:var(--card); border:1px solid var(--rule); border-radius:0; padding:11px 12px}
+.stat b{display:block; font-size:22px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.stat span{font-size:11.5px; color:var(--ink-3); line-height:1.35; display:block; margin-top:1px}
+.wgroup{margin-bottom:26px}
+.wgroup > h3{
+  font-size:12px; letter-spacing:.01em; color:var(--ink-3);
+  padding-bottom:9px; border-bottom:1px solid var(--rule); margin-bottom:11px;
+}
+.wrow{background:var(--card); border:1px solid var(--rule); border-radius:0; padding:13px 14px; margin-bottom:8px}
+.wrow-h{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:9px}
+.wrow-h b{font-size:15px; font-weight:700; letter-spacing:-.01em; flex:1; min-width:150px}
+.tag{
+  font-family:var(--mono); font-size:10px; font-weight:400; letter-spacing:.01em;
+  padding:3px 7px; border-radius:0; white-space:nowrap;
+}
+.tag.live{background:var(--ok-soft); color:var(--ok)}
+.tag.build{background:var(--file-soft); color:var(--file)}
+.tag.fix{background:var(--chi-soft); color:var(--chi)}
+.tag.mo{background:var(--s1-soft); color:var(--mo)}
+.wgrid{display:grid; grid-template-columns:78px 1fr; gap:4px 12px; font-size:13.5px; line-height:1.5}
+.wgrid dt{font-family:var(--mono); font-size:10.5px; letter-spacing:.01em; color:var(--ink-3); padding-top:3px}
+.wgrid dd{margin:0; color:var(--ink-2)}
+.wgrid dd code{font-family:var(--mono); font-size:12.5px; background:var(--ground); padding:1px 5px; border-radius:0; color:var(--ink)}
+.foot{border-top:1px solid var(--rule); margin-top:30px; padding:16px 2px 0; font-size:12.5px; color:var(--ink-3); line-height:1.6}
+.empty{text-align:center; padding:40px 16px; color:var(--ink-3); font-size:14.5px}
+
+/* ---- CHI design system, applied ------------------------------------ */
+
+/* The rule line. The brand book says a chi-red rule marks CHI's presence
+   wherever the logo does not fit, and no logo file exists in the system yet,
+   so the header carries the rule rather than a drawn mark. */
+.top{border-bottom:2px solid var(--chi)}
+.mark-rule{width:22px; height:3px; background:var(--chi); flex:none}
+.mark-txt{font-size:13.5px; font-weight:700; letter-spacing:-.015em}
+@media (max-width:374px){ .mark-txt{font-size:12px} .mark-rule{width:16px} .top-in{gap:8px} }
+@media (max-width:339px){ .mark-txt{font-size:11px} }
+
+.viewsw{background:var(--panel); padding:2px; gap:0}
+.viewsw button{font-weight:400; color:var(--ink-2)}
+.viewsw button[aria-pressed="true"]{background:var(--card); color:var(--ink); font-weight:700}
+
+/* tiles: charcoal and white. Red says where you are, not what colour a board is. */
+.tile{border:1px solid var(--rule); background:var(--card)}
+.tile .ico{color:var(--ink-2); opacity:1}
+.tile .lab{color:var(--ink); font-weight:400}
+.grid.q4 .lab{font-weight:700}
+.tile:hover{border-color:var(--chi); background:var(--card); transform:none}
+.tile:hover .ico, .tile:hover .lab{color:var(--chi)}
+.tile .rt{color:var(--ink-3); letter-spacing:.01em}
+
+/* where the participant is now */
+.here{background:var(--chi); color:var(--on-chi); font-weight:700; letter-spacing:0; font-size:10px; padding:2px 7px}
+.chip{font-weight:400}
+.chip:hover{border-color:var(--chi); color:var(--chi)}
+.chip.on{background:var(--chi); border-color:var(--chi); color:var(--on-chi); font-weight:700}
+.chip .dot{background:var(--chi)}
+
+/* band headings: a charcoal rule, so the red stays rare */
+.band{color:var(--ink-2); font-weight:700; letter-spacing:.01em; font-size:12.5px}
+.band::after{background:var(--rule)}
+
+/* the participant's own line, marked by the CHI rule */
+.you{background:var(--panel); border-left:3px solid var(--chi)}
+.you .yl{color:var(--chi); font-weight:700; letter-spacing:.01em}
+
+/* a note is charcoal; a deadline is red, because red should mean act */
+.note{background:var(--panel); border-left:3px solid var(--ink-3)}
+.clock{background:var(--chi-soft); border-left:3px solid var(--chi)}
+.clock .clock-l{color:var(--chi); font-weight:700; letter-spacing:.01em}
+
+/* routes read from their words, not from four colours */
+.pill{border:1px solid var(--rule); background:var(--card); color:var(--ink-2); font-weight:700; letter-spacing:0}
+.pill.File{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+
+.leaf{border:1px solid var(--rule)}
+.leaf-h{background:var(--card); border-bottom:2px solid var(--chi)}
+.leaf-h h2{font-weight:700}
+.lead{font-weight:700}
+.need{background:var(--panel); border:none; border-left:3px solid var(--rule)}
+.need h4{color:var(--ink-2); font-weight:700; letter-spacing:.01em}
+
+/* the brand book's own button: a square chi-red fill with white type */
+.act{background:var(--chi); color:var(--on-chi); font-weight:700}
+.act:hover{background:var(--chi-deep)}
+.act.ghost{border:1px solid var(--chi); color:var(--chi); background:transparent}
+
+.bar{background:linear-gradient(to top, var(--ground) 70%, rgba(255,255,255,0))}
+.bar button{border:1px solid var(--rule); font-weight:700}
+.bar button:hover{border-color:var(--chi); color:var(--chi)}
+
+.idcard{border:1px solid var(--rule)}
+/* one red rule at a time: the header already carries it */
+.idcard h2{font-weight:700}
+.idrow input{background:var(--card); border:1px solid var(--rule)}
+.idrow input:focus{border-color:var(--chi)}
+.lock{background:var(--panel); border:none; border-left:3px solid var(--rule)}
+.lock-l{color:var(--ink-2); font-weight:700; letter-spacing:.01em}
+.strip{border:1px solid var(--rule); border-left:3px solid var(--chi)}
+.strip-n{font-weight:700}
+.preview{background:var(--panel); border:none}
+.preview-l{letter-spacing:.01em}
+.try{background:var(--card); border:1px solid var(--rule); color:var(--chi)}
+.try:hover{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+.pick{background:var(--card); border:1px solid var(--rule)}
+.pick:hover{border-color:var(--chi); background:var(--card)}
+.pick-n{font-weight:700}
+.sample{border:1px solid var(--rule)}
+.sample-h{background:var(--panel); border-bottom:1px solid var(--rule)}
+.sample-l{letter-spacing:.01em}
+.asklab{letter-spacing:.01em; font-weight:700; color:var(--ink-2); font-size:11px}
+
+/* wiring view */
+.wire-lead h1{font-weight:700}
+.wgroup > h3{color:var(--ink-2); font-weight:700; letter-spacing:.01em}
+.wrow{border:1px solid var(--rule)}
+.stat div{border:1px solid var(--rule)}
+.stat b{font-weight:700}
+.tag{font-weight:700; letter-spacing:0; border:1px solid var(--rule); background:var(--card); color:var(--ink-2)}
+.tag.live{background:var(--card); color:var(--ink-2)}
+.tag.build{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+.tag.fix{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+.tag.mo{background:var(--panel); color:var(--ink-2)}
+.wgrid dt{letter-spacing:.01em; font-weight:700; color:var(--ink-2)}
+.code{background:var(--panel); border:1px solid var(--rule)}
+
+/* ---- fuller buttons ------------------------------------------------
+   Everything that can be pressed is a solid block now, not an outline.
+   Charcoal panels with white type are the brand book's own dark-panel
+   treatment, so this adds weight without spending more red. */
+
+/* tiles read as blocks */
+.tile{background:var(--panel); border:1px solid transparent}
+.tile:hover{background:var(--card); border-color:var(--chi)}
+.grid.q4 .tile{background:var(--panel); border:1px solid transparent}
+.grid.q4 .tile:hover{background:var(--card); border-color:var(--chi)}
+
+/* the persistent bar: solid charcoal, white type */
+.bar button{
+  background:var(--ink); border:1px solid var(--ink); color:#FFFFFF;
+  padding:14px 8px; font-size:13.5px; gap:6px;
+}
+@media (max-width:379px){ .bar button{font-size:12.5px; padding:14px 6px; gap:5px} }
+.bar button:hover{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+
+/* board switcher chips */
+.chip{background:var(--panel); border:1px solid transparent; min-height:38px; padding:0 13px}
+.chip:hover{background:var(--ink); border-color:var(--ink); color:#FFFFFF}
+.chip:hover .dot{background:#FFFFFF}
+.chip.on{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+
+/* the one red action, with room to breathe */
+.act{padding:18px 16px; font-size:16px}
+.act.inline{height:46px; padding:0 20px; font-size:15px; border:1px solid var(--chi)}
+.act.ghost{background:var(--panel); border:1px solid var(--ink); color:var(--ink)}
+.act.ghost:hover{background:var(--ink); color:#FFFFFF}
+
+/* small presses */
+.try{background:var(--card); border:1px solid var(--rule); color:var(--ink-2); padding:5px 9px}
+.try:hover{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
+.copy{background:var(--ink); color:#FFFFFF; padding:8px 12px}
+.copy:hover{background:var(--chi); color:var(--on-chi)}
+.idskip{background:var(--panel); color:var(--ink-2); padding:12px}
+.idskip:hover{background:var(--ink); color:#FFFFFF}
+.iconbtn{background:var(--panel); width:36px; height:36px}
+@media (max-width:379px){
+  .mark-txt{font-size:12.5px}
+  .mark-rule{width:16px}
+  .top-in{gap:8px}
+  .viewsw button{padding:0 9px; font-size:10.5px}
+}
+.iconbtn:hover, .iconbtn[aria-expanded="true"]{background:var(--ink); color:#FFFFFF}
+.pick{background:var(--panel); border:1px solid transparent}
+.pick:hover{background:var(--card); border-color:var(--chi)}
+.strip button{background:var(--panel); padding:7px 11px; min-height:34px; font-size:12px}
+.strip button:hover{background:var(--chi); color:var(--on-chi)}
+.viewsw button{min-height:36px; padding:0 11px}
+.idrow input{height:46px}
+.search{height:46px}
+
+
+/* ---- the mark ------------------------------------------------------
+   The real CHI logo, used exactly as supplied: no recolouring, no stretching,
+   no rearranging, clear space all round, on white.
+
+   It is NOT in the header. The brand book sets a floor of half an inch, about
+   48px, and the ring type is unreadable below that. A 48px mark does not fit a
+   56px sticky bar on a phone without crowding it. The book's own instruction
+   for that case is to use the chi-red rule line instead, which is what the
+   header carries, and to show the mark where it has room. */
+.top{border-bottom:2px solid var(--chi)}
+.mark-rule{width:22px; height:3px; background:var(--chi); flex:none}
+.mark-txt{font-size:13.5px; font-weight:700; letter-spacing:-.015em}
+
+.brandmark{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  padding:34px 16px 10px;
+}
+.brandmark img{width:72px; height:72px; display:block}
+.brandmark span{
+  font-size:11.5px; color:var(--ink-3); letter-spacing:.01em; text-align:center;
+}
+@media (max-height:720px){ .brandmark{padding:20px 16px 6px} .brandmark img{width:60px; height:60px} }
+
+/* ---- narrow phones, last word --------------------------------------
+   Consolidated here so it is not fighting earlier blocks. The view switch is
+   internal tooling, so it gives up room before the CHI wordmark does. */
+@media (max-width:374px){
+  .top-in{gap:7px}
+  .mark{gap:8px}
+  .mark-rule{width:14px}
+  .mark-txt{font-size:12.5px}
+  .iconbtn{width:32px; height:32px}
+  .viewsw button{padding:0 8px; font-size:10.5px; min-height:32px}
+}
+@media (max-width:339px){
+  .mark-txt{font-size:11.5px}
+  .viewsw button{padding:0 6px; font-size:10px}
+}
+
+/* ---- the programme lockup ------------------------------------------
+   CHI WORK & TRAVEL, supplied by CHI. Recoloured to exact CHI Red #9D2235:
+   the file as sent was #892833, which is close and, by the brand book's own
+   rule, is therefore not CHI Red.
+
+   This replaces the red rule line in the header. The rule stands in for the
+   logo when no mark fits; a mark fits here now, and it is the right one,
+   because this is the programme's own lockup rather than the corporate globe.
+   The globe mark stays on the front page, where it has room to be read. */
+.mark-lockup{height:27px; width:auto; display:block; flex:none}
+.top{border-bottom:1px solid var(--rule)}
+@media (max-width:374px){ .mark-lockup{height:23px} }
+@media (max-width:339px){ .mark-lockup{height:21px} }

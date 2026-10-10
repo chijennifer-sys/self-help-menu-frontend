@@ -1,0 +1,82 @@
+# Publishes the menu to GitHub Pages on every push to main.
+#
+# Before the first run: Settings > Pages > Build and deployment > Source =
+# "GitHub Actions". Do not pick "Deploy from a branch"; this workflow uploads
+# the artifact itself.
+#
+# Action majors are the Node 24 releases. GitHub removed the Node 20 action
+# runtime on 23 September 2026, so the handover majors (checkout v4,
+# setup-node v4, configure-pages v5, upload-pages-artifact v3, deploy-pages v4)
+# no longer run. upload-pages-artifact and deploy-pages stay on v5 together;
+# they share one artifact format.
+# include-hidden-files keeps .nojekyll in the upload. v5 hides dotfiles unless
+# asked. .git and .github are still left out.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time. Never cancel one in flight: participants are reading
+# the page it is replacing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Every script file must parse
+        run: for f in assets/*.js; do node --check "$f"; done
+
+      - name: No secret may reach a public repo
+        run: |
+          # Catch the things that must only ever exist in the private backend.
+          if grep -rInE "AKfyc|clasprc|script\.google\.com/macros/s/[A-Za-z0-9_-]{30,}/dev" assets/ index.html; then
+            echo "::error::A deployment id or a /dev URL is committed. Only the /exec URL belongs here."
+            exit 1
+          fi
+          if grep -rInE "(docs\.google\.com/spreadsheets/d/|drive\.google\.com/drive/folders/)" assets/ index.html; then
+            echo "::error::A Drive or Sheet id is committed. Those live in the private repo."
+            exit 1
+          fi
+
+      - name: The content file must still hold every tile
+        run: |
+          node -e "
+            const fs=require('fs');
+            const src=fs.readFileSync('assets/content.js','utf8');
+            const n=(src.match(/\n\{s:'/g)||[]).length;
+            if(n<60){ console.error('Only '+n+' tiles found in content.js'); process.exit(1); }
+            console.log(n+' tiles present');
+          "
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: '.'
+          include-hidden-files: true
+      - id: deployment
+        uses: actions/deploy-pages@v5
