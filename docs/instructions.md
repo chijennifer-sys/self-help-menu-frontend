@@ -208,3 +208,20 @@ Those are written up for the backend repository.
 Changing the words on a question is a separate, small edit: the tile lives
 in `assets/content.js`. After you commit that file to `main`, wait for the
 green tick, then refresh the site.
+
+---
+
+## 9. Leave Issues turned on
+
+Later, one issue a day will be picked up from this repository.
+
+1. In **Settings**, click **General**.
+2. Under **Features**, leave **Issues** ticked.
+
+New requests go under the **Issues** tab. Use **Bug report** when something
+is wrong, and **Feature or wording change** when you want the menu to say
+or do something new. One issue, one change. Do not put a real student name,
+a Student ID, or a personal link in an issue.
+
+**Check:** The Issues tab is visible, and **New issue** offers Bug report
+and Feature or wording change.
