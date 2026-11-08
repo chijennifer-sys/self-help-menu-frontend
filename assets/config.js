@@ -1,7 +1,7 @@
 /* CHI participant menu — configuration.
    ENDPOINT is the deployed Apps Script web app /exec URL. Empty runs on DEMO. */
 
-const ENDPOINT = '';
+const ENDPOINT = 'https://script.google.com/macros/s/AKfycbylHhKZzK_2IFqr9w3cHtUr22IFaMpDJcSPl5ik07kkeW3WH7HfdO8GvrJMehK0H8QQ/exec';
 
 /* ---------- demo roster. Fictional records for testing only.
    In production this is replaced by one lookup call, see the wiring view. ---------- */
