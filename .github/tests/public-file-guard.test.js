@@ -16,13 +16,23 @@ function fixture() {
   return root;
 }
 
-test('the repo as committed passes with ENDPOINT empty', () => {
+const EXEC_URL = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+
+test('the committed config passes with an empty ENDPOINT or one /exec URL', () => {
   const root = path.resolve(__dirname, '..', '..');
-  const errors = checkPublicTree(root);
-  assert.deepEqual(errors, []);
+  assert.deepEqual(checkPublicTree(root), []);
   const config = fs.readFileSync(path.join(root, 'assets', 'config.js'), 'utf8');
-  assert.match(config, /const ENDPOINT = '';/);
-  assert.equal(config.includes('AKfyc'), false);
+  const lines = config.split('\n').filter(line => /^\s*const ENDPOINT\s*=/.test(line));
+  assert.equal(lines.length, 1);
+  const match = lines[0].match(/^\s*const ENDPOINT\s*=\s*(['"])(.*)\1\s*;\s*$/);
+  assert.ok(match, 'ENDPOINT must be one quoted string');
+  const value = match[2];
+  assert.ok(value === '' || EXEC_URL.test(value));
+  if (value) {
+    const without = config.replace(value, '');
+    assert.equal(without.includes(value), false);
+    assert.equal(without.includes('AKfyc'), false);
+  }
 });
 
 test('one proper /exec URL is allowed only as ENDPOINT in config.js', () => {

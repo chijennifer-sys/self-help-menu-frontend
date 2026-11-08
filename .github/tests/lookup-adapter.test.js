@@ -49,6 +49,28 @@ function jsonResponse(status, body, contentType) {
   };
 }
 
+function endpointValue(source) {
+  const match = String(source).match(/^const ENDPOINT\s*=\s*(['"])(.*)\1\s*;/m);
+  if (!match) throw new Error('ENDPOINT assignment not found');
+  return match[2];
+}
+
+/* Swap the saved assignment in memory. Empty and a real /exec URL are both valid inputs. */
+function injectEndpoint(configSource, endpoint) {
+  const current = endpointValue(configSource);
+  const wanted = endpoint ? String(endpoint) : '';
+  const quoted = "'" + wanted.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+  const next = String(configSource).replace(
+    /^const ENDPOINT\s*=\s*(['"])(.*)\1\s*;/m,
+    'const ENDPOINT = ' + quoted + ';'
+  );
+  if (endpointValue(next) !== wanted) throw new Error('ENDPOINT fixture was not injected');
+  if (current && current !== wanted && next.includes(current)) {
+    throw new Error('saved ENDPOINT was left in the fixture');
+  }
+  return next;
+}
+
 async function loadPage({ endpoint, href, handler }) {
   const calls = [];
   const els = {};
@@ -60,10 +82,10 @@ async function loadPage({ endpoint, href, handler }) {
     calls.push({ url: String(url), init: init || {} });
     return handler(String(url), init || {}, calls.length);
   };
-  let config = fs.readFileSync(path.join(ROOT, 'assets', 'config.js'), 'utf8');
-  if (!config.includes("const ENDPOINT = '';")) throw new Error('ENDPOINT line missing');
-  const quoted = endpoint ? "'" + endpoint + "'" : "''";
-  config = config.replace("const ENDPOINT = '';", 'const ENDPOINT = ' + quoted + ';');
+  const config = injectEndpoint(
+    fs.readFileSync(path.join(ROOT, 'assets', 'config.js'), 'utf8'),
+    endpoint || ''
+  );
   const source = [
     fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8'),
     config,
@@ -106,6 +128,31 @@ function stored(memory) {
 function visible(els) {
   return [els.idzone, els.view, els.iderr].map(el => el && el.innerHTML || '').join('\n');
 }
+
+test('endpoint fixtures replace either an empty or a saved /exec URL', () => {
+  const file = path.join(ROOT, 'assets', 'config.js');
+  const savedBytes = fs.readFileSync(file);
+  const saved = savedBytes.toString('utf8');
+  const fixture = 'https://lookup.test/exec';
+  const emptySource = "const ENDPOINT = '';\nconst DEMO = [];\n";
+  const savedSource = "const ENDPOINT = 'https://script.google.com/macros/s/AKfycbSAVEDONLYnotARealDeployment00000/exec';\n";
+  assert.match(injectEndpoint(emptySource, fixture), /const ENDPOINT = 'https:\/\/lookup\.test\/exec';/);
+  assert.equal(injectEndpoint(emptySource, '').includes("const ENDPOINT = '';"), true);
+  const clearedSaved = injectEndpoint(savedSource, '');
+  assert.match(clearedSaved, /const ENDPOINT = '';/);
+  assert.equal(clearedSaved.includes('AKfyc'), false);
+  const swapped = injectEndpoint(savedSource, fixture);
+  assert.match(swapped, /const ENDPOINT = 'https:\/\/lookup\.test\/exec';/);
+  assert.equal(swapped.includes('AKfycbSAVEDONLY'), false);
+  const fromFile = injectEndpoint(saved, '');
+  assert.match(fromFile, /const ENDPOINT = '';/);
+  const previous = endpointValue(saved);
+  if (previous) assert.equal(fromFile.includes(previous), false);
+  const live = injectEndpoint(saved, fixture);
+  assert.equal(endpointValue(live), fixture);
+  if (previous && previous !== fixture) assert.equal(live.includes(previous), false);
+  assert.deepEqual(fs.readFileSync(file), savedBytes);
+});
 
 test('four country answers stay in the content file', () => {
   const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
