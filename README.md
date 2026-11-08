@@ -19,6 +19,9 @@ Hand setup for a non-developer is in [`docs/instructions.md`](docs/instructions.
 
 Open `index.html`. With `ENDPOINT` empty in `assets/config.js` it runs on a
 five-person demo roster and shows a preview strip. That is the whole dev loop.
+A non-empty `ENDPOINT` calls that web app and does not search the demo roster.
+Leave it empty until the country field is mapped, the backend is verified,
+and main has reviewed.
 
 ## Files
 
