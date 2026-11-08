@@ -48,6 +48,16 @@ function maskEmail(e){
   return v[0] + '\u2022\u2022\u2022\u2022' + v.slice(at);
 }
 
+/* A mask from the web app is kept as it arrived. A raw address in that
+   field is masked here, so the raw address is never what gets stored. */
+function safeEmailMask(v){
+  const s = String(v || '').trim();
+  const at = s.indexOf('@');
+  if(at < 1) return '';
+  if(/[•*]/.test(s.slice(0, at))) return s;
+  return maskEmail(s);
+}
+
 function enrich(p){
   const st = D(p.dsStart), en = D(p.dsEnd), ar = D(p.arrival);
   const day = st ? days(TODAY, st) : null;
@@ -64,10 +74,16 @@ function enrich(p){
   m.insGap = (st && ar) ? days(st, ar) : null;
   m.poc = (POC[p.agency] || []).join(' and ');
   m.agencyCode = p.agency;
-  m.agencyName = AGENCY_NAME[p.agency] || '';
+  m.agencyName = AGENCY_NAME[p.agency] || p.agencyName || '';
   // Living in the USA is a board, not a moment, so nothing lands there by date.
   m.stage = (day === null) ? null : day < 0 ? 'home' : day <= 14 ? 'arr' : (m.daysLeft !== null && m.daysLeft <= 14) ? 'end' : (m.daysLeft !== null && m.daysLeft < 0) ? 'end' : 'work';
-  m.emailMask = maskEmail(m.email);
+  const rawEmail = typeof p.email === 'string' ? p.email.trim() : '';
+  if(typeof p.emailMask === 'string' && p.emailMask.trim() && !rawEmail){
+    m.emailMask = safeEmailMask(p.emailMask);
+    delete m.email;
+  } else {
+    m.emailMask = maskEmail(m.email);
+  }
   return m;
 }
 
@@ -76,35 +92,205 @@ function setMe(p){
   try{ ME ? localStorage.setItem('chi_me', JSON.stringify(ME)) : localStorage.removeItem('chi_me'); }catch(e){}
 }
 
-/* Replace these two with real fetches. Contract is in the wiring view.
-   Every lookup needs the Student ID or the name AND the date of birth.
-   Nothing comes back on the ID alone, which is what stops the roster
-   being walked by anybody who has the link. */
+/* Empty ENDPOINT stays on the demo roster. A non-empty ENDPOINT is one GET
+   and never reads DEMO. The page's ?p= token is sent as ?t=. An id or a
+   name is sent as ?q= with ?dob=. Both halves are required. */
+function endpointOn(){
+  return typeof ENDPOINT === 'string' && ENDPOINT.trim() !== '';
+}
+
+function LookupFail(kind){
+  const err = new Error(kind);
+  err.name = 'LookupFail';
+  err.kind = kind;
+  return err;
+}
+
+function asText(v){
+  if(v === undefined || v === null) return '';
+  return String(v).trim();
+}
+
+function liveUrl(params){
+  let u;
+  try{ u = new URL(ENDPOINT); }
+  catch(e){ throw LookupFail('access'); }
+  Object.keys(params).forEach(k => {
+    if(params[k] !== undefined && params[k] !== null && String(params[k]) !== '')
+      u.searchParams.set(k, String(params[k]));
+  });
+  return u.toString();
+}
+
+function headerOf(res, name){
+  try{
+    if(res && res.headers && typeof res.headers.get === 'function')
+      return res.headers.get(name) || '';
+  }catch(e){}
+  return '';
+}
+
+function failureKind(data){
+  if(!data || typeof data !== 'object') return '';
+  if(data.throttled === true || data.throttle === true || data.rateLimited === true) return 'throttle';
+  if(data.tooMany === true || data.too_many === true) return 'too-many';
+  const code = asText(data.code || data.error || data.reason || data.status).toLowerCase();
+  if(/throttle|rate.?limit|too many tries/.test(code)) return 'throttle';
+  if(/too[-_ ]?many/.test(code)) return 'too-many';
+  return '';
+}
+
+function matchRows(data){
+  if(!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  const keys = ['matches','choices','results','people','candidates'];
+  for(let i = 0; i < keys.length; i++){
+    if(Array.isArray(data[keys[i]])) return data[keys[i]];
+  }
+  return null;
+}
+
+function looksLikePerson(o){
+  if(!o || typeof o !== 'object' || Array.isArray(o)) return false;
+  return ['sid','first','last','name','emailMask','employer','dsStart','agency'].some(k => asText(o[k]));
+}
+
+/* Allow-list. first+last become name. emailMask is kept. A raw email
+   property is never copied. Country is kept only when it is non-empty. */
+function adaptFull(raw){
+  if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  ['sid','tok','dob','last','first','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred'].forEach(k => {
+    const v = asText(raw[k]);
+    if(v) out[k] = v;
+  });
+  const first = asText(raw.first), last = asText(raw.last);
+  if(first || last) out.name = [first, last].filter(Boolean).join(' ');
+  else if(asText(raw.name)) out.name = asText(raw.name);
+  const country = asText(raw.country);
+  if(country) out.country = country;
+  if(asText(raw.emailMask)) out.emailMask = safeEmailMask(raw.emailMask);
+  else if(asText(raw.email) && String(raw.email).indexOf('@') > 0) out.emailMask = maskEmail(raw.email);
+  return out.name || out.sid ? out : null;
+}
+
+/* The chooser may only carry name, agency and season, plus the sid used
+   to ask for the full record. Employer and email from this payload are dropped. */
+function projectChooser(raw){
+  const first = asText(raw && raw.first), last = asText(raw && raw.last);
+  const name = (first || last) ? [first, last].filter(Boolean).join(' ') : asText(raw && raw.name);
+  const agency = asText(raw && raw.agency);
+  const agencyName = (AGENCY_NAME[agency] || '') || asText(raw && raw.agencyName);
+  const season = asText(raw && raw.season);
+  const out = {name:name, agency:agency, agencyName:agencyName, season:season};
+  const sid = asText(raw && raw.sid);
+  if(sid) out.sid = sid;
+  return out;
+}
+
+function finishOne(raw){
+  const adapted = adaptFull(raw);
+  return adapted ? enrich(adapted) : null;
+}
+
+function dataToOne(data){
+  if(data == null) return null;
+  if(Array.isArray(data)) return data.length === 1 ? finishOne(data[0]) : null;
+  if(failureKind(data) === 'too-many') return null;
+  if(data.found === false) return null;
+  const rows = matchRows(data);
+  if(rows) return rows.length === 1 ? finishOne(rows[0]) : null;
+  if(!looksLikePerson(data)) return null;
+  return finishOne(data);
+}
+
+function dataToNameList(data){
+  if(data == null) return [];
+  if(failureKind(data) === 'too-many') return 'too-many';
+  let rows = Array.isArray(data) ? data : matchRows(data);
+  if(!rows){
+    if(data.found === false) return [];
+    if(!looksLikePerson(data)) return [];
+    rows = [data];
+  }
+  if(rows.length > 8) return 'too-many';
+  if(rows.length === 1){
+    const one = finishOne(rows[0]);
+    return one ? [one] : [];
+  }
+  return rows.map(projectChooser).filter(p => p && p.name);
+}
+
+async function liveGet(params){
+  let res;
+  try{
+    res = await fetch(liveUrl(params), {method:'GET', credentials:'omit', redirect:'follow', cache:'no-store'});
+  }catch(e){
+    throw LookupFail('network');
+  }
+  if(!res) throw LookupFail('network');
+  if(res.status === 429) throw LookupFail('throttle');
+  if(!res.ok) throw LookupFail('access');
+  let text = '';
+  try{ text = await res.text(); }
+  catch(e){ throw LookupFail('network'); }
+  const trimmed = String(text || '').trim();
+  const ctype = headerOf(res, 'content-type');
+  if(!trimmed) throw LookupFail('malformed');
+  if(/text\/html/i.test(ctype) || trimmed.charAt(0) === '<' || /<!doctype html/i.test(trimmed))
+    throw LookupFail('html');
+  if(ctype && !/json/i.test(ctype) && trimmed.charAt(0) !== '{' && trimmed.charAt(0) !== '[')
+    throw LookupFail('malformed');
+  let data;
+  try{ data = JSON.parse(trimmed); }
+  catch(e){ throw LookupFail('malformed'); }
+  if(failureKind(data) === 'throttle') throw LookupFail('throttle');
+  return data;
+}
+
 async function lookupToken(tok){
-  const hit = DEMO.find(x => x.tok === String(tok).trim());
-  return hit ? enrich(hit) : null;
+  const t = String(tok || '').trim();
+  if(!t) return null;
+  if(!endpointOn()){
+    const hit = DEMO.find(x => x.tok === t);
+    return hit ? enrich(hit) : null;
+  }
+  const data = await liveGet({t:t});
+  return dataToOne(data);
 }
 
 async function lookup(sid, dob){
-  const hit = DEMO.find(x => x.sid === String(sid).trim() && x.dob === dob);
-  return hit ? enrich(hit) : null;
+  const id = String(sid || '').trim();
+  const d = String(dob || '').trim();
+  if(!endpointOn()){
+    const hit = DEMO.find(x => x.sid === id && x.dob === d);
+    return hit ? enrich(hit) : null;
+  }
+  const data = await liveGet({q:id, dob:d});
+  return dataToOne(data);
 }
 
 async function lookupName(full, dob){
-  const parts = String(full).trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if(!parts.length) return [];
-  const starts = (v, q) => String(v || '').toLowerCase().indexOf(q) === 0;
-  let hits;
-  if(parts.length === 1){
-    const q = parts[0];
-    hits = DEMO.filter(x => starts(x.first, q) || starts(x.last, q) || starts(x.preferred, q));
-  } else {
-    const f = parts[0], l = parts[parts.length - 1];
-    hits = DEMO.filter(x => (starts(x.first, f) || starts(x.preferred, f)) && starts(x.last, l));
+  const name = String(full || '').trim();
+  const d = String(dob || '').trim();
+  if(!endpointOn()){
+    const parts = name.toLowerCase().split(/\s+/).filter(Boolean);
+    if(!parts.length) return [];
+    const starts = (v, q) => String(v || '').toLowerCase().indexOf(q) === 0;
+    let hits;
+    if(parts.length === 1){
+      const q = parts[0];
+      hits = DEMO.filter(x => starts(x.first, q) || starts(x.last, q) || starts(x.preferred, q));
+    } else {
+      const f = parts[0], l = parts[parts.length - 1];
+      hits = DEMO.filter(x => (starts(x.first, f) || starts(x.preferred, f)) && starts(x.last, l));
+    }
+    hits = hits.filter(x => x.dob === d);
+    if(hits.length > 8) return 'too-many';
+    return hits.map(enrich);
   }
-  hits = hits.filter(x => x.dob === dob);
-  if(hits.length > 8) return 'too-many';
-  return hits.map(enrich);
+  if(!name) return [];
+  const data = await liveGet({q:name, dob:d});
+  return dataToNameList(data);
 }
 
 function fill(str){
@@ -113,6 +299,7 @@ function fill(str){
 }
 
 let state = {stage:null, leaf:null, q:''};
+let pickDob = '';
 const view = document.getElementById('view');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const chev = '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
@@ -429,6 +616,7 @@ function renderId(){
           <span class="pick-n">${esc(m.name)}</span>
           <span class="pick-d">${esc(m.agencyName || m.country)} &middot; ${esc(m.season||'')}</span>
         </button>`).join('')}</div>
+      <div id="iderr"></div>
       <button class="idskip" data-id="mode-id">None of these, search again</button>
     </div>`;
     return;
@@ -457,6 +645,40 @@ function renderId(){
    This is a courtesy limit only. The real limit belongs in the web app. */
 let tries = 0, coolUntil = 0;
 
+const NOMATCH = 'That does not match a record. Check your Student ID, it is your record number in the CHI portal, and check your date of birth.';
+const THROTTLED = 'Too many tries. Wait a minute, then try again. If it still will not work, use the message button at the bottom of the page.';
+
+function noteLookupFailure(e){
+  const err = document.getElementById('iderr');
+  if(e && e.kind === 'throttle'){
+    coolUntil = Date.now() + 60000;
+    tries = 0;
+    if(err) err.innerHTML = '<div class="iderr">' + THROTTLED + '</div>';
+    return;
+  }
+  if(err) err.innerHTML = '';
+}
+
+async function chooseListed(i){
+  const pick = picks[i];
+  if(!pick) return;
+  if(!endpointOn()){
+    setMe(pick); idMode='id'; picks=[]; renderId(); render(); window.scrollTo({top:0,behavior:'instant'});
+    return;
+  }
+  const q = pick.sid || pick.name;
+  let full = null;
+  try{ full = q && pickDob ? await lookup(q, pickDob) : null; }
+  catch(e){ noteLookupFailure(e); return; }
+  if(!full){
+    const err = document.getElementById('iderr');
+    if(err) err.innerHTML = '<div class="iderr">' + NOMATCH + '</div>';
+    return;
+  }
+  tries = 0;
+  setMe(full); idMode='id'; picks=[]; renderId(); render(); window.scrollTo({top:0,behavior:'instant'});
+}
+
 async function doLookup(){
   const el  = document.getElementById('idq2') || document.getElementById('idq');
   const dl  = document.getElementById('iddob2') || document.getElementById('iddob');
@@ -464,7 +686,7 @@ async function doLookup(){
   const dob = dl ? dl.value.trim() : '';
   const err = document.getElementById('iderr');
   const say = m => { if(err) err.innerHTML = `<div class="iderr">${m}</div>`; };
-  const nomatch = 'That does not match a record. Check your Student ID, it is your record number in the CHI portal, and check your date of birth.';
+  const nomatch = NOMATCH;
 
   const left = Math.ceil((coolUntil - Date.now())/1000);
   if(left > 0){ say(`Too many tries. Wait ${left} seconds, then try again.`); return; }
@@ -475,24 +697,28 @@ async function doLookup(){
 
   const miss = () => {
     tries++;
-    if(tries >= 5){ coolUntil = Date.now() + 60000; tries = 0; say('Too many tries. Wait a minute, then try again. If it still will not work, use the message button at the bottom of the page.'); return; }
+    if(tries >= 5){ coolUntil = Date.now() + 60000; tries = 0; say(THROTTLED); return; }
     say(nomatch);
   };
 
-  if(/^\d{4,6}$/.test(v)){
-    const hit = await lookup(v, dob);
-    if(!hit){ miss(); return; }
-    tries = 0; setMe(hit); idMode='id'; renderId(); render(); window.scrollTo({top:0,behavior:'instant'});
-    return;
-  }
-  if(/\d/.test(v) && !/[a-z]/i.test(v)){ miss(); return; }
+  try{
+    if(/^\d{4,6}$/.test(v)){
+      const hit = await lookup(v, dob);
+      if(!hit){ miss(); return; }
+      tries = 0; setMe(hit); idMode='id'; renderId(); render(); window.scrollTo({top:0,behavior:'instant'});
+      return;
+    }
+    if(/\d/.test(v) && !/[a-z]/i.test(v)){ miss(); return; }
 
-  const res = await lookupName(v, dob);
-  if(res === 'too-many'){ say('That matches more than one person. Use your Student ID instead.'); return; }
-  if(!res.length){ miss(); return; }
-  tries = 0;
-  if(res.length === 1){ setMe(res[0]); idMode='id'; renderId(); render(); window.scrollTo({top:0,behavior:'instant'}); return; }
-  picks = res; idMode = 'pick'; renderId();
+    const res = await lookupName(v, dob);
+    if(res === 'too-many'){ say('That matches more than one person. Use your Student ID instead.'); return; }
+    if(!res.length){ miss(); return; }
+    tries = 0;
+    if(res.length === 1){ setMe(res[0]); idMode='id'; renderId(); render(); window.scrollTo({top:0,behavior:'instant'}); return; }
+    picks = res; pickDob = dob; idMode = 'pick'; renderId();
+  }catch(e){
+    noteLookupFailure(e);
+  }
 }
 
 /* ---------- events ---------- */
@@ -517,7 +743,7 @@ document.addEventListener('click', e => {
     }
     if(k==='go'){ doLookup(); return; }
     if(k==='mode-id'){ idMode='id'; picks=[]; renderId(); return; }
-    if(k==='pick'){ setMe(picks[+idb.dataset.i]); idMode='id'; picks=[]; renderId(); render(); window.scrollTo({top:0,behavior:'instant'}); return; }
+    if(k==='pick'){ chooseListed(+idb.dataset.i); return; }
     if(k==='clear'){ setMe(null); idMode='id'; state.stage=null; state.leaf=null; renderId(); render(); return; }
     if(k==='noop'){ return; }
   }
@@ -587,4 +813,4 @@ document.addEventListener('keydown', e => {
   if(e.key==='Enter' && ['idq','idq2','iddob','iddob2'].indexOf(e.target.id) >= 0) doLookup();
 });
 
-(async () => { await useLinkToken(); renderId(); render(); })();
+var BOOT = (async () => { await useLinkToken(); renderId(); render(); })();

@@ -16,6 +16,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -40,16 +41,10 @@ jobs:
         run: for f in assets/*.js; do node --check "$f"; done
 
       - name: No secret may reach a public repo
-        run: |
-          # Catch the things that must only ever exist in the private backend.
-          if grep -rInE "AKfyc|clasprc|script\.google\.com/macros/s/[A-Za-z0-9_-]{30,}/dev" assets/ index.html; then
-            echo "::error::A deployment id or a /dev URL is committed. Only the /exec URL belongs here."
-            exit 1
-          fi
-          if grep -rInE "(docs\.google\.com/spreadsheets/d/|drive\.google\.com/drive/folders/)" assets/ index.html; then
-            echo "::error::A Drive or Sheet id is committed. Those live in the private repo."
-            exit 1
-          fi
+        run: node .github/scripts/public-file-guard.js
+
+      - name: Lookup adapter tests
+        run: node --test .github/tests/*.js
 
       - name: The content file must still hold every tile
         run: |
@@ -62,6 +57,7 @@ jobs:
           "
 
   deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-latest
     permissions:

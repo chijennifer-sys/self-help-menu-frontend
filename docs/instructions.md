@@ -125,7 +125,17 @@ once by hand. It looks like:
 
 It must end in `/exec`. An address that ends in `/dev` is the wrong one.
 
-To put it in this repository:
+The lookup in `assets/app.js` is already wired. While `ENDPOINT` is empty,
+the page keeps using the five made-up people. When `ENDPOINT` is that
+`/exec` address, the page calls the web app and stops searching the
+made-up people.
+
+Leave the address empty for now. Four answers still contain `{country}`,
+and that field is not ready. The backend still needs its check, and main
+still needs to review. Saving the address before those three are done
+hides the demo buttons and sends real lookups to the web app.
+
+When those three are done, put the address in this repository:
 
 1. On GitHub, open the file `assets/config.js`.
 2. Click the pencil (**Edit this file**).
@@ -138,37 +148,24 @@ To put it in this repository:
    `const ENDPOINT = 'https://script.google.com/macros/s/your-code/exec';`
 
 5. Do not paste a Google Sheet link. Do not paste a Drive folder link.
-   Do not paste a Script id. This one address is the only backend detail
-   that belongs in this file.
+   Do not paste a Script id on its own. Do not paste an address that ends
+   in `/dev`. This one `/exec` address, on this one line, is the only
+   backend detail that belongs in this file.
 6. Click **Commit changes**. Leave **Commit directly to the `main` branch**
    selected, then confirm.
 
 **Check:** `assets/config.js` shows your `/exec` address and nothing else
 new. The **Deploy to GitHub Pages** run goes green again.
 
-### Do not do step 6 on its own
-
-Right now, that address only hides the **Preview / Demo data** strip.
-The page still answers from the five made-up people. It does not call the
-backend yet.
-
-The three lookup functions that would call the backend are in
-`assets/app.js`, not in `config.js`. The written brief and the Wiring screen
-on the menu do not agree on the exact replacement, so that edit is an open
-question. It is listed in the setup pull request. Do not copy the code off
-the Wiring screen. It is an older sketch and it will not line up with the
-page.
-
-Leave `ENDPOINT` empty until that question is settled and both edits land
-in the same change. If you save the address first, the demo buttons
-disappear and real students still cannot be found.
+The Wiring screen still shows an older sketch. Do not copy that sketch
+over `assets/app.js`. The page already calls the web app the way the
+backend expects.
 
 ---
 
 ## 7. The check that waits until the backend is connected
 
-Do this only after the `/exec` address is saved **and** the three lookup
-functions have been switched over.
+Do this only after the `/exec` address is saved in `assets/config.js`.
 
 1. From the backend roster, copy one person's **Menu Link**. It contains
    `?p=` and a long token.
