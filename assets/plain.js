@@ -259,7 +259,7 @@ const PLAIN = {
 },
 'I lost my passport or another document': {
   lead:'File a police report, then email CHI.',
-  steps:['File a police report and keep the number.','Contact your embassy for a new passport.','Email CHI with the form on this page.','CHI is open every day at 1-800-432-4643, ext. 0.'],
+  steps:['File a police report and keep the number.','Contact your embassy for a new passport.','Email CHI with the form on this page.','The CHI line is open 24/7: 1-800-432-4643, ext. 0.'],
   watch:'A visa can only be replaced outside the United States.'
 },
 'I need a letter or a document from CHI': {
