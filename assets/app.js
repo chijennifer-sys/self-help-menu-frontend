@@ -74,6 +74,9 @@ function enrich(p){
   m.earlyOk = m.insStartF;
   m.dsStartF = FMT(st); m.dsEndF = FMT(en); m.arrivalF = FMT(ar);
   m.firstName = asText(p.firstName || p.first);
+  m.winterNote = /\bwinter\b/i.test(asText(p.season))
+    ? 'This is a winter season. Watch for frostbite, dress in layers, and expect short days in small towns.'
+    : '';
   ['sevisValidationDate','embassyInterview','dateVisaReceived','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd'].forEach(k => {
     if(m[k] && /^\d{4}-\d{2}-\d{2}/.test(String(m[k]))) m[k] = FMT(D(String(m[k]).slice(0,10)));
   });

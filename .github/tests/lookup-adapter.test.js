@@ -1018,3 +1018,90 @@ test('My visa appointment stays behind the ID and date of birth gate and does no
   assert.equal(page.calls.length, 0);
   assert.equal(page.els.bar.hidden, false);
 });
+
+test('training deck facts stay on the existing tiles', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  const phones = [...src.matchAll(/1-800-432-4643/g)];
+  assert.ok(phones.length >= 4);
+  phones.forEach(hit => {
+    const window = src.slice(hit.index, hit.index + 70);
+    assert.match(window, /^1-800-432-4643, ext\. 0/);
+    assert.match(window, /24\/7/);
+  });
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a training-deck check must not look anyone up'); }
+  });
+  function search(word){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    assert.equal(page.els.view.innerHTML.includes('Nothing matches'), false, word);
+    return page.els.view.innerHTML;
+  }
+  assert.match(search('revolut'), /US bank account/i);
+  assert.match(search('paypal'), /US bank account/i);
+  assert.match(search('1040'), /tax/i);
+  assert.match(search('marijuana'), /What should I bring/);
+  assert.match(search('frostbite'), /What should I bring/);
+
+  const expectF = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  page.sandbox.setMe({ season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ', dsStart: '2026-06-01', dsEnd: '2026-09-15' });
+  page.sandbox.openQuestion('What should I bring');
+  assert.match(page.els.view.innerHTML, /1,500 dollars/);
+  assert.match(page.els.view.innerHTML, /2 to 3 weeks/);
+  assert.match(page.els.view.innerHTML, /21/);
+  assert.match(page.els.view.innerHTML, /cigarettes, vapes, or alcohol/);
+  assert.match(page.els.view.innerHTML, /Marijuana is illegal under federal law/);
+  assert.equal(page.els.view.innerHTML.includes('frostbite'), false);
+
+  page.sandbox.setMe({ season: 'Winter 2027', location: 'Stowe, VT', dsStart: '2026-12-01', dsEnd: '2027-03-15' });
+  page.sandbox.openQuestion('What should I bring');
+  assert.match(page.els.view.innerHTML, /frostbite/);
+  assert.match(page.els.view.innerHTML, /dress in layers/);
+  assert.match(page.els.view.innerHTML, /short days in small towns/);
+  page.sandbox.openQuestion('How early can I arrive');
+  assert.match(page.els.view.innerHTML, /3 to 5 days before/);
+  assert.match(page.els.view.innerHTML, new RegExp(expectF('2026-12-01').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  page.sandbox.setMe({ employer: 'Aramark', season: 'Summer 2026' });
+  page.sandbox.openQuestion('How early can I arrive');
+  assert.match(page.els.view.innerHTML, /3 to 5 days before/);
+  assert.equal(page.els.view.innerHTML.includes('undefined'), false);
+  assert.equal(/\{[a-zA-Z]+/.test(page.els.view.innerHTML), false);
+  page.sandbox.openQuestion('Where do I verify my housing');
+  assert.match(page.els.view.innerHTML, /at least 4 weeks before you arrive/);
+  assert.match(page.els.view.innerHTML, /cannot activate SEVIS/);
+  page.sandbox.openQuestion('How do I get a second job approved');
+  assert.match(page.els.view.innerHTML, /written CHI approval before your first shift/);
+  assert.match(page.els.view.innerHTML, /verbal OK from an employer is not approval/);
+  assert.match(page.els.view.innerHTML, /Additional Employment form/);
+  page.sandbox.openQuestion('Can I change to a different employer');
+  assert.match(page.els.view.innerHTML, /30 days/);
+  assert.match(page.els.view.innerHTML, /CHI must approve/);
+  assert.match(page.els.view.innerHTML, /Do not walk out of your job/);
+  page.sandbox.openQuestion('How do I open a US bank account');
+  assert.match(page.els.view.innerHTML, /Revolut and PayPal do not work for U\.S\. payroll/);
+  assert.match(page.els.view.innerHTML, /Use a U\.S\. bank account/);
+  page.sandbox.openQuestion('What tax comes out of my pay');
+  assert.match(page.els.view.innerHTML, /W-2 arrives by January 31/);
+  assert.match(page.els.view.innerHTML, /February 1 and April 15/);
+  assert.match(page.els.view.innerHTML, /Form 1040-NR/);
+  page.sandbox.openQuestion('When do I have to leave the United States');
+  assert.match(page.els.view.innerHTML, /up to 30 days/);
+  assert.match(page.els.view.innerHTML, /cannot work/);
+  assert.match(page.els.view.innerHTML, /Consider travel insurance/);
+  assert.equal(page.els.view.innerHTML.includes('undefined'), false);
+  page.sandbox.setMe({ dsStart: '2026-06-01', dsEnd: '2026-09-15', season: 'Summer 2026' });
+  page.sandbox.openQuestion('When do I have to leave the United States');
+  assert.match(page.els.view.innerHTML, new RegExp(expectF('2026-09-15').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(page.els.view.innerHTML, /Consider travel insurance/);
+
+  ['What documents do I need', 'I was in an accident', 'I feel unsafe or I am being harassed', 'I lost my passport or another document'].forEach(q => {
+    page.sandbox.openQuestion(q);
+    assert.match(page.els.view.innerHTML, /1-800-432-4643, ext\. 0/, q);
+    assert.match(page.els.view.innerHTML, /24\/7/, q);
+  });
+});
