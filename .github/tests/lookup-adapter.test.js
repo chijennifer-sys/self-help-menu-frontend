@@ -171,10 +171,13 @@ test('endpoint fixtures replace either an empty or a saved /exec URL', () => {
   assert.deepEqual(fs.readFileSync(file), savedBytes);
 });
 
-test('four country answers stay in the content file', () => {
+test('country personalization stays on the four programme tiles', () => {
   const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
-  const hits = src.match(/\{country\}/g) || [];
-  assert.equal(hits.length, 4);
+  ['My visa appointment', 'Where is my DS-2019', 'I lost my passport or another document', 'Can I come back next year'].forEach(q => {
+    const i = src.indexOf("q:'" + q + "'");
+    assert.ok(i > 0, q);
+    assert.match(src.slice(i, i + 700), /\{country/);
+  });
 });
 
 test('demo roster is unchanged when ENDPOINT is empty', async () => {
@@ -409,7 +412,9 @@ test('name and date of birth chooser exposes only name, agency, and season', asy
   assert.equal(JSON.stringify(me).includes('chooser-secret@example.com'), false);
   assert.equal(JSON.stringify(me).includes('Chooser Employer Hidden'), false);
   assert.equal(me.country, undefined);
-  assert.equal(page.sandbox.fill('You are in {country}.'), 'You are in {country}.');
+  const blankCountry = page.sandbox.fill('You are in {country}.');
+  assert.equal(blankCountry.includes('{country}'), false);
+  assert.equal(blankCountry.includes('undefined'), false);
 });
 
 test('a live record keeps emailMask and a non-empty country, and never stores a raw email', async () => {
@@ -861,8 +866,8 @@ test('WhatsApp button follows Eastern office hours', async () => {
   assert.equal(noteText.includes('911'), false);
   assert.equal(page.els.whatsapp.textContent, 'WhatsApp Jenn');
   const content = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
-  assert.match(content, /If you are in immediate danger, call 911 first\./);
-  assert.match(content, /call or text 988/);
+  assert.match(content, /Call 911/);
+  assert.match(content, /988/);
 
   function show(iso){
     page.opened.length = 0;
@@ -894,9 +899,9 @@ test('WhatsApp button follows Eastern office hours', async () => {
   await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
   page.sandbox.setOfficeNow('2026-01-10T15:00:00Z');
   page.sandbox.openQuestion('I feel unsafe or I am being harassed');
-  assert.match(page.els.view.innerHTML, /call 911 first/);
+  assert.match(page.els.view.innerHTML, /Call 911/);
   page.sandbox.openQuestion('I am struggling or homesick');
-  assert.match(page.els.view.innerHTML, /call or text 988/);
+  assert.match(page.els.view.innerHTML, /988/);
   assert.equal(page.els.whatsapp.hidden, true);
   assert.equal(page.els.whatsappnote.hidden, false);
 });
@@ -932,6 +937,68 @@ test('CHI office holidays hide WhatsApp for the Eastern date', async () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   assert.match(html, /WhatsApp is available Monday to Friday, 9am to 5pm Eastern\./);
   assert.equal(note.includes('911'), false);
+});
+
+test('computed dates, missing fields, hasSSN, and search', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('rendering a fake record must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    agency: 'AEX', country: 'Romania', employer: 'Aramark', location: 'Ocean City, NJ',
+    job: 'Server', season: 'Summer 2026', hasSSN: 'No',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', arrival: '2026-05-28'
+  });
+  const me = JSON.parse(page.sandbox.localStorage.getItem('chi_me'));
+  const expectF = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  assert.equal(me.insStartF, expectF('2026-05-25'));
+  assert.equal(me.sevisDueF, expectF('2026-05-31'));
+  assert.equal(me.graceEnd, expectF('2026-10-15'));
+  assert.equal(me.ssnBy, expectF('2026-08-01'));
+  assert.equal(me.sevisBy, me.sevisDueF);
+  page.sandbox.openQuestion('How do I apply for my Social Security Number');
+  assert.match(page.els.view.innerHTML, /activation email/);
+  assert.equal(page.els.view.innerHTML.includes('good for life'), false);
+  page.sandbox.setMe(Object.assign({}, me, { hasSSN: 'Yes' }));
+  page.sandbox.openQuestion('How do I apply for my Social Security Number');
+  assert.match(page.els.view.innerHTML, /good for life/);
+
+  page.sandbox.setMe({ sid: '10001', name: 'Ada', first: 'Ada', agency: 'ZZZZ', agencyName: 'ZZZZ' });
+  const titles = [...fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8').matchAll(/\bq:'([^']+)'/g)].map(m => m[1]);
+  assert.equal(titles.length, 67);
+  titles.forEach(q => {
+    page.sandbox.openQuestion(q);
+    const html = page.els.view.innerHTML;
+    assert.equal(html.includes('undefined'), false, q);
+    assert.equal(/\{[a-zA-Z]+/.test(html), false, q);
+    assert.equal(html.includes('ZZZZ'), false, q);
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace', firstName: 'Ada',
+    agency: 'AEX', agencyName: 'American Experience', country: 'Romania',
+    employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server', season: 'Summer 2026',
+    hasSSN: 'Yes', coordinator: 'kathleen', dsNumber: 'N123', housingStatus: 'Approved',
+    housingAddress: '1 Boardwalk', sevisStatus: 'Validated', visaStatus: 'Approved',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', arrival: '2026-05-28',
+    emailMask: 'a••••@example.com'
+  });
+  titles.forEach(q => {
+    page.sandbox.openQuestion(q);
+    assert.equal(page.els.view.innerHTML.includes('undefined'), false, q);
+    assert.equal(/\{[a-zA-Z]+/.test(page.els.view.innerHTML), false, q);
+  });
+  page.els.s.value = 'social security';
+  page.els.s.listeners.input.forEach(fn => fn());
+  assert.match(page.els.view.innerHTML, /Social Security/i);
+  page.els.s.value = 'teladoc';
+  page.els.s.listeners.input.forEach(fn => fn());
+  assert.match(page.els.view.innerHTML, /Teladoc|doctor|sick/i);
+  page.els.s.value = 'workers comp';
+  page.els.s.listeners.input.forEach(fn => fn());
+  assert.match(page.els.view.innerHTML, /second job|accident|employer/i);
+  assert.equal(titles.length, 67);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
