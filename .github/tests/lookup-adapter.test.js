@@ -1268,3 +1268,46 @@ test('the U.S. phone tile opens the Tally form and search finds it', async () =>
   search('whatsapp number');
   search('us number');
 });
+
+test('job change and shorten program open the named Tally forms', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('these forms must not look anyone up'); }
+  });
+  page.sandbox.setMe({ sid: '10001', first: 'Ada', last: 'Lovelace', employer: 'Aramark', dsEnd: '2026-09-15' });
+
+  page.sandbox.openQuestion('Can I change to a different employer');
+  const change = page.els.view.innerHTML;
+  assert.match(change, /Open the job change checklist/);
+  assert.match(change, /href="https:\/\/tally\.so\/r\/aQyZxb\?[^"]*sid=10001/);
+  assert.match(change, /30 days/);
+  assert.match(change, /CHI must approve/);
+  assert.match(change, /Do not walk out of your job/);
+  assert.equal(change.includes('undefined'), false);
+
+  page.sandbox.openQuestion('Can I make my second job my main job');
+  const swap = page.els.view.innerHTML;
+  assert.match(swap, /Open the job change checklist/);
+  assert.match(swap, /href="https:\/\/tally\.so\/r\/aQyZxb\?[^"]*sid=10001/);
+
+  page.sandbox.openQuestion('I want to go home early');
+  const home = page.els.view.innerHTML;
+  assert.match(home, /Submit a shorten program request/);
+  assert.match(home, /href="https:\/\/tally\.so\/r\/pbLbZP\?[^"]*sid=10001/);
+  assert.equal(home.includes('undefined'), false);
+
+  function search(word, title){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    assert.equal(page.els.view.innerHTML.includes('Nothing matches'), false, word);
+    assert.match(page.els.view.innerHTML, title);
+  }
+  search('checklist', /Can I change to a different employer/);
+  search('switch employer', /Can I change to a different employer/);
+  search('quit job', /Can I change to a different employer/);
+  search('new job', /Can I change to a different employer/);
+  search('early return', /I want to go home early/);
+  search('quit program', /I want to go home early/);
+  search('end program', /I want to go home early/);
+});
