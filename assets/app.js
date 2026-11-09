@@ -168,6 +168,12 @@ function adaptFull(raw){
   else if(asText(raw.name)) out.name = asText(raw.name);
   const country = asText(raw.country);
   if(country) out.country = country;
+  /* Birth Country is the verified roster column. Keep it beside country so
+     this tile can use it without rewriting every other {country} sentence. */
+  const birthCountry = asText(raw.birthCountry) || asText(raw.birth_country) || asText(raw['Birth Country']);
+  if(birthCountry) out.birthCountry = birthCountry;
+  const office = asText(raw.agencyOfficeCode) || asText(raw['Agency Office Code']);
+  if(office) out.agencyOfficeCode = office;
   if(asText(raw.emailMask)) out.emailMask = safeEmailMask(raw.emailMask);
   else if(asText(raw.email) && String(raw.email).indexOf('@') > 0) out.emailMask = maskEmail(raw.email);
   return out.name || out.sid ? out : null;
@@ -397,6 +403,47 @@ function renderSearch(){
     : `<div class="empty">Nothing matches that word.<br>Try SSN, hours, housing, visa or second job.</div>`;
 }
 
+function looksLikeAgencyCode(v){
+  return /^[A-Z0-9]{2,6}$/.test(String(v || ''));
+}
+
+/* Agency Office Code stays internal. Show the mapped name, never a bare code. */
+function visaAgencyName(me){
+  if(!me) return '';
+  const code = asText(me.agency) || asText(me.agencyOfficeCode);
+  if(code && AGENCY_NAME[code]) return AGENCY_NAME[code];
+  const given = asText(me.agencyName);
+  if(!given || given === code || looksLikeAgencyCode(given)) return '';
+  return given;
+}
+
+function visaCountry(me){
+  if(!me) return '';
+  return asText(me.country) || asText(me.birthCountry);
+}
+
+function visaYouHtml(me){
+  const agencyName = visaAgencyName(me);
+  const country = visaCountry(me);
+  if(agencyName && country) return 'You are coming through <b>' + esc(agencyName) + '</b> in <b>' + esc(country) + '</b>. They book your appointment, not CHI.';
+  if(agencyName) return 'You are coming through <b>' + esc(agencyName) + '</b>. They book your appointment, not CHI.';
+  if(country) return 'You are coming through your agency in <b>' + esc(country) + '</b>. They book your appointment, not CHI.';
+  return '';
+}
+
+function leafBody(t){
+  return t.body.map(p => {
+    if(t.q === 'My visa appointment' && String(p).indexOf('Is your appointment after your start date') === 0){
+      const when = ME && asText(ME.dsStartF);
+      const sentence = when
+        ? 'Is your appointment after your start date, <b>' + esc(when) + '</b>? Tell your agency now. CHI can write a letter to move your dates. But your agency has to ask for it.'
+        : esc(p);
+      return '<p>' + sentence + '</p>';
+    }
+    return '<p>' + esc(fill(p)) + '</p>';
+  }).join('');
+}
+
 function renderLeaf(){
   const t = T[state.leaf];
   const s = STAGES.find(x=>x.key===t.s);
@@ -429,6 +476,9 @@ function renderLeaf(){
   if(url && ME){
     url += `?sid=${encodeURIComponent(ME.sid)}&first=${encodeURIComponent(ME.first)}&last=${encodeURIComponent(ME.last)}&employer=${encodeURIComponent(ME.employer)}`;
   }
+  const youHtml = t.q === 'My visa appointment'
+    ? visaYouHtml(ME)
+    : (t.you && ME && !/\{\w+\}/.test(fill(t.you)) ? fill(t.you) : '');
   view.innerHTML = `
     <div class="crumb"><button data-go="${state.q?'search':'stage'}" data-stage="${t.s}">${back} ${esc(state.q?'Results':s.t)}</button></div>
     <article class="leaf">
@@ -438,8 +488,8 @@ function renderLeaf(){
       </div>
       <div class="leaf-b">
         <p class="lead">${esc(fill(t.lead))}</p>
-        ${t.you && ME && !/\{\w+\}/.test(fill(t.you)) ? `<div class="you"><span class="yl">Your programme</span>${fill(t.you)}</div>` : ''}
-        ${t.body.map(p=>`<p>${esc(fill(p))}</p>`).join('')}
+        ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
+        ${leafBody(t)}
         ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${esc(fill(t.clock.t))}</div>` : ''}
         ${t.hz ? `<div class="note" style="background:var(--ground);border-left-color:var(--s${STAGES.find(x=>x.key===t.s).n})">Housing has tiles at every point in your programme. Search the word housing and they all come up.</div>` : ''}
         ${t.sample ? `<div class="sample">
@@ -812,5 +862,15 @@ vw.addEventListener('click', ()=>setView(true));
 document.addEventListener('keydown', e => {
   if(e.key==='Enter' && ['idq','idq2','iddob','iddob2'].indexOf(e.target.id) >= 0) doLookup();
 });
+
+function openQuestion(q){
+  const i = T.findIndex(t => t.q === q);
+  if(i < 0) return false;
+  state.q = '';
+  state.leaf = i;
+  state.stage = T[i].s;
+  render();
+  return true;
+}
 
 var BOOT = (async () => { await useLinkToken(); renderId(); render(); })();

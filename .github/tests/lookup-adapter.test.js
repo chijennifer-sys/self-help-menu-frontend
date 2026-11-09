@@ -473,3 +473,158 @@ test('the page ?p= token is requested as backend ?t=', async () => {
   assert.equal(me.country, 'Thailand');
   assert.equal(Object.hasOwn(me, 'email'), false);
 });
+
+function person(extra) {
+  return Object.assign({
+    found: true,
+    sid: '10001',
+    first: 'Ada',
+    last: 'Lovelace',
+    email: 'raw-secret-box@example.com',
+    emailMask: 'a••••@example.com',
+    dob: '2001-01-04',
+    season: 'Summer 2026',
+    hasSSN: 'No'
+  }, extra);
+}
+
+async function identifyAs(page, record) {
+  page.els.idq.value = record.sid;
+  page.els.iddob.value = record.dob;
+  await page.sandbox.doLookup();
+}
+
+function clickAct(page, kind) {
+  const button = {
+    dataset: { act: kind },
+    textContent: 'Message my agency',
+    disabled: false,
+    style: {},
+    closest(sel) { return sel === '[data-act]' ? button : null; }
+  };
+  const listeners = (page.els.document.listeners && page.els.document.listeners.click) || [];
+  listeners.forEach(fn => fn({ target: { closest(sel) { return button.closest(sel); } } }));
+  return button;
+}
+
+test('My visa appointment uses Birth Country, the agency name, and the start date', async () => {
+  const configFile = path.join(ROOT, 'assets', 'config.js');
+  const configBefore = fs.readFileSync(configFile);
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  const tile = src.slice(src.indexOf("q:'My visa appointment'"), src.indexOf("q:'Where is my DS-2019'"));
+  assert.match(tile, /r:'Answer'/);
+  assert.match(tile, /fires:'Nothing sends'/);
+  assert.match(tile, /captures:'Nothing'/);
+  assert.match(tile, /notify:'Nobody'/);
+  assert.match(tile, /log:'Page view only'/);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({
+        agency: 'AEX',
+        birthCountry: 'Romania',
+        employer: 'Aramark',
+        location: 'Ocean City, NJ',
+        dsStart: '2026-06-01',
+        dsEnd: '2026-09-15',
+        arrival: '2026-05-28'
+      }));
+    }
+  });
+  await identifyAs(page, person({}));
+  assert.equal(page.sandbox.openQuestion('My visa appointment'), true);
+  const html = page.els.view.innerHTML;
+  const me = stored(page.memory);
+  assert.match(html, /You are coming through <b>American Experience<\/b> in <b>Romania<\/b>\. They book your appointment, not CHI\./);
+  assert.match(html, new RegExp('start date, <b>' + me.dsStartF.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '</b>'));
+  assert.equal(html.includes('AEX'), false);
+  assert.equal(html.includes('raw-secret-box@example.com'), false);
+  assert.equal(html.includes('2001-01-04'), false);
+  assert.equal(html.includes('{country}'), false);
+  assert.equal(html.includes('{agencyName}'), false);
+  assert.equal(me.birthCountry, 'Romania');
+  assert.equal(me.country, undefined);
+  assert.equal(Object.hasOwn(me, 'email'), false);
+  const callsAfterOpen = page.calls.length;
+  const button = clickAct(page, 'agency');
+  assert.equal(page.calls.length, callsAfterOpen);
+  assert.match(button.textContent, /American Experience is your agency/);
+  assert.equal(button.textContent.includes('raw-secret-box@example.com'), false);
+
+  const byOffice = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({
+        agencyOfficeCode: 'EXPB',
+        'Birth Country': 'Bosnia and Herzegovina',
+        dsStart: '2026-05-20',
+        dsEnd: '2026-09-01'
+      }));
+    }
+  });
+  await identifyAs(byOffice, person({}));
+  byOffice.sandbox.openQuestion('My visa appointment');
+  const officeHtml = byOffice.els.view.innerHTML;
+  assert.match(officeHtml, /Experience Work and Travel Doo/);
+  assert.match(officeHtml, /Bosnia and Herzegovina/);
+  assert.equal(officeHtml.includes('EXPB'), false);
+  assert.deepEqual(fs.readFileSync(configFile), configBefore);
+});
+
+test('My visa appointment omits a missing country, agency name, or start date', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({ agency: 'ZZZZ', employer: 'Hidden Employer' }));
+    }
+  });
+  await identifyAs(page, person({}));
+  page.sandbox.openQuestion('My visa appointment');
+  const html = page.els.view.innerHTML;
+  assert.match(html, /Your agency at home books your embassy appointment\. CHI does not book it\./);
+  assert.match(html, /Is your appointment after your start date\? Tell your agency now\./);
+  assert.equal(html.includes('{'), false);
+  assert.equal(html.includes('ZZZZ'), false);
+  assert.equal(html.includes('Hidden Employer'), false);
+  assert.equal(html.includes('Your programme'), false);
+
+  const countryOnly = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({ birthCountry: 'Romania' }));
+    }
+  });
+  await identifyAs(countryOnly, person({}));
+  countryOnly.sandbox.openQuestion('My visa appointment');
+  const countryHtml = countryOnly.els.view.innerHTML;
+  assert.match(countryHtml, /your agency in <b>Romania<\/b>/);
+  assert.equal(countryHtml.includes('{agencyName}'), false);
+  countryOnly.sandbox.openQuestion('Where is my DS-2019');
+  const other = countryOnly.els.view.innerHTML;
+  assert.equal(other.includes('Romania'), false);
+  assert.equal(other.includes('{country}'), false);
+});
+
+test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('the locked tile must not look anyone up'); }
+  });
+  assert.equal(page.els.bar.hidden, false);
+  assert.ok(page.els.msg);
+  assert.equal(page.sandbox.openQuestion('My visa appointment'), true);
+  const locked = page.els.view.innerHTML;
+  assert.match(locked, /This answer is different for every person/);
+  assert.match(locked, /Student ID and your date of birth/);
+  assert.equal(locked.includes('CHI pays your SEVIS fee'), false);
+  assert.equal(locked.includes('American Experience'), false);
+  assert.equal(page.calls.length, 0);
+  assert.equal(page.els.bar.hidden, false);
+});
