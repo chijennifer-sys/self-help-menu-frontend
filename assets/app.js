@@ -90,6 +90,7 @@ function enrich(p){
 function setMe(p){
   ME = p ? enrich(p) : null;
   try{ ME ? localStorage.setItem('chi_me', JSON.stringify(ME)) : localStorage.removeItem('chi_me'); }catch(e){}
+  if(typeof refreshWhatsApp === 'function') refreshWhatsApp();
 }
 
 /* Empty ENDPOINT stays on the demo roster. A non-empty ENDPOINT is one GET
@@ -844,15 +845,15 @@ sIn.addEventListener('input', () => {
 });
 sClear.addEventListener('click', () => { sIn.value=''; state.q=''; sClear.hidden=true; sIn.focus(); render(); });
 
-/* Approved coordinators. Email is the main draft. WhatsApp is urgent help.
+/* Approved coordinators. Email is the main draft. WhatsApp is the second button.
    A click opens a draft only. Nothing is sent until the participant taps Send.
    Names match the whole value only. Unknown or mixed values use Jennifer. */
 const CHI_TEAM = {
-  jenn: { greet:'Jennifer', email:'chijennifer@chinet.org', whatsapp:'https://wa.me/16099484483' },
-  kathleen: { greet:'Kathleen', email:'chikathleenr@chinet.org', whatsapp:'https://wa.me/16093503606' },
-  victor: { greet:'Victor', email:'chivictor@chinet.org', whatsapp:'https://wa.me/16098922969' },
-  amy: { greet:'Amy', email:'chiamyj@chinet.org', whatsapp:'https://wa.me/17178805970' },
-  dasha: { greet:'Dasha', email:'chidashak@chinet.org', whatsapp:'https://wa.me/16465121122' }
+  jenn: { greet:'Jennifer', short:'Jenn', email:'chijennifer@chinet.org', whatsapp:'https://wa.me/16099484483' },
+  kathleen: { greet:'Kathleen', short:'Kathleen', email:'chikathleenr@chinet.org', whatsapp:'https://wa.me/16093503606' },
+  victor: { greet:'Victor', short:'Victor', email:'chivictor@chinet.org', whatsapp:'https://wa.me/16098922969' },
+  amy: { greet:'Amy', short:'Amy', email:'chiamyj@chinet.org', whatsapp:'https://wa.me/17178805970' },
+  dasha: { greet:'Dasha', short:'Dasha', email:'chidashak@chinet.org', whatsapp:'https://wa.me/16465121122' }
 };
 const COORDINATOR_NAMES = {
   'jenn':'jenn', 'jennifer campbell':'jenn',
@@ -973,12 +974,12 @@ document.getElementById('msg').addEventListener('click', function(e){
   if(e && e.preventDefault) e.preventDefault();
   openMailDraft(chiMailUrl());
 });
-/* Office clock is America/New_York, including daylight saving. Urgent
-   WhatsApp is Monday to Friday, 9:00:00 through 16:59:59. No holiday list. */
+/* Office clock is America/New_York, including daylight saving. The WhatsApp
+   button is Monday to Friday, 9:00:00 through 16:59:59. No holiday list. */
 let officeNow = null;
 function setOfficeNow(value){
   officeNow = value ? new Date(value) : null;
-  refreshUrgent();
+  refreshWhatsApp();
 }
 function officeClock(){
   return officeNow ? new Date(officeNow.getTime()) : new Date();
@@ -1005,11 +1006,20 @@ function whatsAppOpen(now){
   const secs = hour * 3600 + minute * 60 + second;
   return secs >= 9 * 3600 && secs < 17 * 3600;
 }
-function refreshUrgent(now){
+function whatsAppButtonLabel(){
+  const who = CHI_TEAM[assignedCoordinator()] || CHI_TEAM.jenn;
+  return 'WhatsApp ' + who.short;
+}
+function refreshWhatsApp(now){
   const open = whatsAppOpen(now);
-  const btn = document.getElementById('urgent');
-  const note = document.getElementById('urgentnote');
+  const btn = document.getElementById('whatsapp');
+  const note = document.getElementById('whatsappnote');
   if(btn){
+    const label = whatsAppButtonLabel();
+    const span = btn.querySelector && btn.querySelector('span');
+    if(span) span.textContent = label;
+    else btn.textContent = label;
+    if(btn.setAttribute) btn.setAttribute('aria-label', label);
     btn.hidden = !open;
     if(btn.style) btn.style.display = open ? '' : 'none';
   }
@@ -1019,13 +1029,13 @@ function refreshUrgent(now){
   }
 }
 
-document.getElementById('urgent').addEventListener('click', function(e){
+document.getElementById('whatsapp').addEventListener('click', function(e){
   if(e && e.preventDefault) e.preventDefault();
   if(!whatsAppOpen()) return;
   if(window.open) window.open(chiWhatsAppUrl(), '_blank', 'noopener,noreferrer');
 });
-refreshUrgent();
-if(typeof setInterval === 'function') setInterval(function(){ refreshUrgent(); }, 60000);
+refreshWhatsApp();
+if(typeof setInterval === 'function') setInterval(function(){ refreshWhatsApp(); }, 60000);
 document.getElementById('portal').addEventListener('click', () => {
   const i = T.findIndex(t => t.q === 'I cannot get into my CHI portal');
   if(i < 0) return;

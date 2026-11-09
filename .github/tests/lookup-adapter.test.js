@@ -127,7 +127,7 @@ async function loadPage({ endpoint, href, handler }) {
     },
     navigator: { clipboard: { writeText: async () => {} } }
   };
-  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'urgent', 'urgentnote', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
+  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'whatsapp', 'whatsappnote', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
   sandbox.document.body = els.body;
   els.body.appendChild = () => {};
   vm.runInNewContext(source, sandbox, { filename: 'page.js' });
@@ -517,7 +517,7 @@ function clickId(page, id) {
 }
 
 function clickMsg(page) { clickId(page, 'msg'); }
-function clickUrgent(page) { clickId(page, 'urgent'); }
+function clickWhatsApp(page) { clickId(page, 'whatsapp'); }
 
 function parseMailto(url) {
   assert.match(url, /^mailto:/);
@@ -710,7 +710,7 @@ test('Message my CHI team opens an email draft on click and not on view', async 
   assert.equal(mail.subject, 'My visa appointment');
   assert.match(mail.body, /^Hello Jennifer,\n\nI need help from my CHI team\.\nQuestion: My visa appointment\n\n\[Describe what happened\.\.\.\]$/);
   assertNoSecrets(mail.subject + '\n' + mail.body);
-  clickUrgent(page);
+  clickWhatsApp(page);
   const anon = whatsAppText(page.opened[0]);
   assert.equal(anon, 'Hello, I need help from my CHI team.\nI am looking at: My visa appointment');
   assert.equal(page.calls.length, 0);
@@ -752,13 +752,13 @@ test('Message my CHI team opens an email draft on click and not on view', async 
   assert.equal(named.calls.length, callsBefore);
 });
 
-test('email and urgent WhatsApp follow the same coordinator and do not guess', async () => {
+test('email and WhatsApp follow the same coordinator and do not guess', async () => {
   const team = {
-    jenn: { email: 'chijennifer@chinet.org', whatsapp: 'https://wa.me/16099484483', greet: 'Jennifer' },
-    kathleen: { email: 'chikathleenr@chinet.org', whatsapp: 'https://wa.me/16093503606', greet: 'Kathleen' },
-    victor: { email: 'chivictor@chinet.org', whatsapp: 'https://wa.me/16098922969', greet: 'Victor' },
-    amy: { email: 'chiamyj@chinet.org', whatsapp: 'https://wa.me/17178805970', greet: 'Amy' },
-    dasha: { email: 'chidashak@chinet.org', whatsapp: 'https://wa.me/16465121122', greet: 'Dasha' }
+    jenn: { email: 'chijennifer@chinet.org', whatsapp: 'https://wa.me/16099484483', greet: 'Jennifer', short: 'Jenn' },
+    kathleen: { email: 'chikathleenr@chinet.org', whatsapp: 'https://wa.me/16093503606', greet: 'Kathleen', short: 'Kathleen' },
+    victor: { email: 'chivictor@chinet.org', whatsapp: 'https://wa.me/16098922969', greet: 'Victor', short: 'Victor' },
+    amy: { email: 'chiamyj@chinet.org', whatsapp: 'https://wa.me/17178805970', greet: 'Amy', short: 'Amy' },
+    dasha: { email: 'chidashak@chinet.org', whatsapp: 'https://wa.me/16465121122', greet: 'Dasha', short: 'Dasha' }
   };
   async function route(extra) {
     const page = await loadPage({
@@ -783,7 +783,7 @@ test('email and urgent WhatsApp follow the same coordinator and do not guess', a
     assert.equal(page.mails.length, 0);
     assert.equal(page.opened.length, 0);
     clickMsg(page);
-    clickUrgent(page);
+    clickWhatsApp(page);
     return { page, mail: parseMailto(page.mails[0]), wa: page.opened[0], me: stored(page.memory) };
   }
   function expectWho(result, key) {
@@ -800,6 +800,8 @@ test('email and urgent WhatsApp follow the same coordinator and do not guess', a
     assertNoSecrets(result.mail.subject + '\n' + result.mail.body);
     assert.equal(result.mail.body.includes('Romania'), false);
     whatsAppText(result.wa, who.whatsapp);
+    assert.equal(result.page.els.whatsapp.textContent, 'WhatsApp ' + who.short);
+    assert.equal(result.page.els.whatsapp.getAttribute('aria-label'), 'WhatsApp ' + who.short);
     assert.equal(JSON.stringify(result.me).includes(who.email), false);
     assert.equal(JSON.stringify(result.me).includes('wa.me'), false);
   }
@@ -844,25 +846,27 @@ test('email and urgent WhatsApp follow the same coordinator and do not guess', a
   assert.equal(decide({}), 'jenn');
 });
 
-test('urgent WhatsApp follows Eastern office hours', async () => {
+test('WhatsApp button follows Eastern office hours', async () => {
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
     href: 'https://example.test/menu/',
     handler() { return jsonResponse(200, person({ dob: '2001-01-04' })); }
   });
   const open = page.sandbox.whatsAppOpen;
-  const note = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  const noteText = note.slice(note.indexOf('id="urgentnote"'), note.indexOf('</div>', note.indexOf('id="urgentnote"')));
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.equal(/urgent/i.test(html), false);
+  const noteText = html.slice(html.indexOf('id="whatsappnote"'), html.indexOf('</div>', html.indexOf('id="whatsappnote"')));
   assert.match(noteText, /WhatsApp is available Monday to Friday, 9am to 5pm Eastern\./);
   assert.equal(noteText.includes('911'), false);
+  assert.equal(page.els.whatsapp.textContent, 'WhatsApp Jenn');
   const content = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
   assert.match(content, /If you are in immediate danger, call 911 first\./);
   assert.match(content, /call or text 988/);
 
   function show(iso){
     page.opened.length = 0;
-    page.sandbox.refreshUrgent(iso);
-    return { button: page.els.urgent.hidden, line: page.els.urgentnote.hidden, mail: page.els.msg.hidden };
+    page.sandbox.refreshWhatsApp(iso);
+    return { button: page.els.whatsapp.hidden, line: page.els.whatsappnote.hidden, mail: page.els.msg.hidden };
   }
   assert.deepEqual(show('2026-01-06T13:59:59Z'), { button: true, line: false, mail: false });
   assert.deepEqual(show('2026-01-06T14:00:00Z'), { button: false, line: true, mail: false });
@@ -878,12 +882,12 @@ test('urgent WhatsApp follows Eastern office hours', async () => {
   assert.equal(open('2026-01-06T22:00:00Z'), false);
 
   page.sandbox.setOfficeNow('2026-01-06T22:00:00Z');
-  clickUrgent(page);
+  clickWhatsApp(page);
   assert.equal(page.opened.length, 0);
   clickMsg(page);
   assert.equal(parseMailto(page.mails[0]).to, 'chijennifer@chinet.org');
   page.sandbox.setOfficeNow('2026-01-06T15:00:00Z');
-  clickUrgent(page);
+  clickWhatsApp(page);
   assert.equal(page.opened.length, 1);
 
   await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
@@ -892,8 +896,8 @@ test('urgent WhatsApp follows Eastern office hours', async () => {
   assert.match(page.els.view.innerHTML, /call 911 first/);
   page.sandbox.openQuestion('I am struggling or homesick');
   assert.match(page.els.view.innerHTML, /call or text 988/);
-  assert.equal(page.els.urgent.hidden, true);
-  assert.equal(page.els.urgentnote.hidden, false);
+  assert.equal(page.els.whatsapp.hidden, true);
+  assert.equal(page.els.whatsappnote.hidden, false);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
