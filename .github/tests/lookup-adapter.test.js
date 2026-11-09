@@ -77,7 +77,13 @@ async function loadPage({ endpoint, href, handler }) {
   const make = id => els[id] || (els[id] = createEl(id));
   const memory = new Map();
   const history = { url: '', replaceState(_s, _t, next) { history.url = next; } };
-  const windowObj = { location: { href }, scrollTo() {} };
+  const opened = [];
+  const mails = [];
+  const windowObj = {
+    location: { href },
+    scrollTo() {},
+    open(url){ opened.push(String(url)); return { closed: false }; }
+  };
   const fetch = async (url, init) => {
     calls.push({ url: String(url), init: init || {} });
     return handler(String(url), init || {}, calls.length);
@@ -89,6 +95,7 @@ async function loadPage({ endpoint, href, handler }) {
   const source = [
     fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8'),
     config,
+    fs.readFileSync(path.join(ROOT, 'assets', 'office-holidays.js'), 'utf8'),
     fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8')
   ].join('\n');
   const sandbox = {
@@ -109,15 +116,25 @@ async function loadPage({ endpoint, href, handler }) {
       body: null,
       getElementById: id => els[id] || null,
       addEventListener(type, fn) { make('document').addEventListener(type, fn); },
-      querySelector: sel => sel === '.shell' ? make('shell') : null
+      querySelector: sel => sel === '.shell' ? make('shell') : null,
+      createElement(tag) {
+        const el = createEl(tag);
+        el.click = () => {
+          if (String(el.href || '').indexOf('mailto:') === 0) mails.push(String(el.href));
+        };
+        el.remove = () => {};
+        return el;
+      }
     },
     navigator: { clipboard: { writeText: async () => {} } }
   };
-  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
+  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'whatsapp', 'whatsappnote', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
   sandbox.document.body = els.body;
+  els.body.appendChild = () => {};
   vm.runInNewContext(source, sandbox, { filename: 'page.js' });
   await sandbox.BOOT;
-  return { sandbox, calls, els, memory, history };
+  if(sandbox.setOfficeNow) sandbox.setOfficeNow('2026-01-06T15:00:00Z');
+  return { sandbox, calls, els, memory, history, opened, mails };
 }
 
 function stored(memory) {
@@ -472,4 +489,465 @@ test('the page ?p= token is requested as backend ?t=', async () => {
   assert.equal(me.name, 'Ada Lovelace');
   assert.equal(me.country, 'Thailand');
   assert.equal(Object.hasOwn(me, 'email'), false);
+});
+
+function person(extra) {
+  return Object.assign({
+    found: true,
+    sid: '10001',
+    first: 'Ada',
+    last: 'Lovelace',
+    email: 'raw-secret-box@example.com',
+    emailMask: 'a••••@example.com',
+    dob: '2001-01-04',
+    season: 'Summer 2026',
+    hasSSN: 'No'
+  }, extra);
+}
+
+async function identifyAs(page, record) {
+  page.els.idq.value = record.sid;
+  page.els.iddob.value = record.dob;
+  await page.sandbox.doLookup();
+}
+
+function clickId(page, id) {
+  const button = page.els[id];
+  const listeners = (button.listeners && button.listeners.click) || [];
+  listeners.forEach(fn => fn.call(button, { preventDefault() {} }));
+}
+
+function clickMsg(page) { clickId(page, 'msg'); }
+function clickWhatsApp(page) { clickId(page, 'whatsapp'); }
+
+function parseMailto(url) {
+  assert.match(url, /^mailto:/);
+  const q = url.indexOf('?');
+  const to = decodeURIComponent(url.slice('mailto:'.length, q));
+  const params = new URLSearchParams(url.slice(q + 1));
+  return { to, subject: params.get('subject'), body: params.get('body') };
+}
+
+function clickAct(page, kind) {
+  const button = {
+    dataset: { act: kind },
+    textContent: 'Message my agency',
+    disabled: false,
+    style: {},
+    closest(sel) { return sel === '[data-act]' ? button : null; }
+  };
+  const listeners = (page.els.document.listeners && page.els.document.listeners.click) || [];
+  listeners.forEach(fn => fn({ target: { closest(sel) { return button.closest(sel); } } }));
+  return button;
+}
+
+test('My visa appointment uses Birth Country, the agency name, and the start date', async () => {
+  const configFile = path.join(ROOT, 'assets', 'config.js');
+  const configBefore = fs.readFileSync(configFile);
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  const tile = src.slice(src.indexOf("q:'My visa appointment'"), src.indexOf("q:'Where is my DS-2019'"));
+  assert.match(tile, /r:'Answer'/);
+  assert.match(tile, /fires:'Nothing sends'/);
+  assert.match(tile, /captures:'Nothing'/);
+  assert.match(tile, /notify:'Nobody'/);
+  assert.match(tile, /log:'Page view only'/);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({
+        agency: 'AEX',
+        birthCountry: 'Romania',
+        employer: 'Aramark',
+        location: 'Ocean City, NJ',
+        dsStart: '2026-06-01',
+        dsEnd: '2026-09-15',
+        arrival: '2026-05-28'
+      }));
+    }
+  });
+  await identifyAs(page, person({}));
+  assert.equal(page.sandbox.openQuestion('My visa appointment'), true);
+  const html = page.els.view.innerHTML;
+  const me = stored(page.memory);
+  assert.match(html, /You are coming through <b>American Experience<\/b> in <b>Romania<\/b>\. They book your appointment, not CHI\./);
+  assert.match(html, new RegExp('start date, <b>' + me.dsStartF.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '</b>'));
+  assert.equal(html.includes('AEX'), false);
+  assert.equal(html.includes('raw-secret-box@example.com'), false);
+  assert.equal(html.includes('2001-01-04'), false);
+  assert.equal(html.includes('{country}'), false);
+  assert.equal(html.includes('{agencyName}'), false);
+  assert.equal(me.birthCountry, 'Romania');
+  assert.equal(me.country, undefined);
+  assert.equal(Object.hasOwn(me, 'email'), false);
+  const callsAfterOpen = page.calls.length;
+  const button = clickAct(page, 'chi');
+  assert.equal(page.calls.length, callsAfterOpen);
+  assert.equal(button.textContent, 'Use Message my CHI team at the bottom of the page');
+  assert.equal(/agency|mailto|@/i.test(button.textContent), false);
+
+  const byOffice = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({
+        agencyOfficeCode: 'EXPB',
+        'Birth Country': 'Bosnia and Herzegovina',
+        dsStart: '2026-05-20',
+        dsEnd: '2026-09-01'
+      }));
+    }
+  });
+  await identifyAs(byOffice, person({}));
+  byOffice.sandbox.openQuestion('My visa appointment');
+  const officeHtml = byOffice.els.view.innerHTML;
+  assert.match(officeHtml, /Experience Work and Travel Doo/);
+  assert.match(officeHtml, /Bosnia and Herzegovina/);
+  assert.equal(officeHtml.includes('EXPB'), false);
+  assert.deepEqual(fs.readFileSync(configFile), configBefore);
+});
+
+test('My visa appointment omits a missing country, agency name, or start date', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({ agency: 'ZZZZ', employer: 'Hidden Employer' }));
+    }
+  });
+  await identifyAs(page, person({}));
+  page.sandbox.openQuestion('My visa appointment');
+  const html = page.els.view.innerHTML;
+  assert.match(html, /Your agency at home books your embassy appointment\. CHI does not book it\./);
+  assert.match(html, /Is your appointment after your start date\? CHI can write a letter to move your dates\./);
+  assert.equal(/ask your agency|tell your agency|message my agency/i.test(html), false);
+  assert.equal(html.includes('{'), false);
+  assert.equal(html.includes('ZZZZ'), false);
+  assert.equal(html.includes('Hidden Employer'), false);
+  assert.equal(html.includes('Your programme'), false);
+
+  const countryOnly = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({ birthCountry: 'Romania' }));
+    }
+  });
+  await identifyAs(countryOnly, person({}));
+  countryOnly.sandbox.openQuestion('My visa appointment');
+  const countryHtml = countryOnly.els.view.innerHTML;
+  assert.match(countryHtml, /your agency in <b>Romania<\/b>/);
+  assert.equal(countryHtml.includes('{agencyName}'), false);
+  countryOnly.sandbox.openQuestion('Where is my DS-2019');
+  const other = countryOnly.els.view.innerHTML;
+  assert.equal(other.includes('Romania'), false);
+  assert.equal(other.includes('{country}'), false);
+});
+
+test('participant-facing copy does not tell anyone to contact an agency', () => {
+  const vm = require('node:vm');
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8') + '\nglobalThis.__T=T; globalThis.__R=ROUTE_D;';
+  const sandbox = {};
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(src, sandbox);
+  const banned = /ask your agency|ask them for the tracking|tell your agency|message my agency|message your agency|contact your agency|your agency contact|apply through them|apply through the same agency|ask your agency at home|mailto:/i;
+  const hits = [];
+  for (const t of sandbox.__T) {
+    const bits = [];
+    if (t.you) bits.push(t.you);
+    if (t.lead) bits.push(t.lead);
+    (t.body || []).forEach(p => bits.push(p));
+    (t.need || []).forEach(p => bits.push(p));
+    if (t.act) {
+      bits.push(t.act.label);
+      if (t.act.kind === 'agency') hits.push(t.q + ' still has an agency action');
+    }
+    if (t.clock) bits.push(t.clock.l + ' ' + t.clock.t);
+    if (t.sample) (t.sample.lines || []).forEach(l => bits.push(l));
+    bits.forEach(s => { if (banned.test(String(s))) hits.push(t.q + ': ' + s); });
+  }
+  assert.deepEqual(hits, []);
+  assert.equal(banned.test(sandbox.__R.Agency), false);
+  assert.equal(/question for the agency/i.test(sandbox.__R.Agency), false);
+  const app = fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8');
+  assert.equal(app.includes('Their contact details are on your job offer'), false);
+  assert.equal(app.includes('Your agency contact is on your job offer'), false);
+});
+
+function whatsAppText(url, base) {
+  const u = new URL(url);
+  assert.equal(u.origin + u.pathname, base || 'https://wa.me/16099484483');
+  assert.deepEqual([...u.searchParams.keys()], ['text']);
+  return u.searchParams.get('text');
+}
+
+function assertNoSecrets(text) {
+  assert.equal(text.includes('undefined'), false);
+  assert.equal(text.includes('null'), false);
+  assert.equal(text.includes('2001-01-04'), false);
+  assert.equal(text.includes('raw-secret-box@example.com'), false);
+  assert.equal(text.includes('secret-token-value'), false);
+  assert.equal(/a••••@example\.com/.test(text), false);
+}
+
+test('Message my CHI team opens an email draft on click and not on view', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('the message bar must not look anyone up'); }
+  });
+  page.sandbox.openQuestion('My visa appointment');
+  assert.equal(page.opened.length, 0);
+  assert.equal(page.mails.length, 0);
+  assert.equal(page.calls.length, 0);
+  clickMsg(page);
+  assert.equal(page.calls.length, 0);
+  assert.equal(page.opened.length, 0);
+  assert.equal(page.mails.length, 1);
+  const mail = parseMailto(page.mails[0]);
+  assert.equal(mail.to, 'chijennifer@chinet.org');
+  assert.equal(mail.subject, 'My visa appointment');
+  assert.match(mail.body, /^Hello Jennifer,\n\nI need help from my CHI team\.\nQuestion: My visa appointment\n\n\[Describe what happened\.\.\.\]$/);
+  assertNoSecrets(mail.subject + '\n' + mail.body);
+  clickWhatsApp(page);
+  const anon = whatsAppText(page.opened[0]);
+  assert.equal(anon, 'Hello, I need help from my CHI team.\nI am looking at: My visa appointment');
+  assert.equal(page.calls.length, 0);
+
+  const named = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({
+        first: 'Ada',
+        last: 'Lovelace & Co',
+        sid: '10001',
+        season: 'Summer 2026',
+        dob: '2001-01-04',
+        email: 'raw-secret-box@example.com',
+        emailMask: 'a••••@example.com',
+        employer: 'Hidden Employer',
+        location: 'Ocean City, NJ',
+        country: 'Romania',
+        tok: 'secret-token-value',
+        dsStart: '2026-06-01',
+        dsEnd: '2026-09-15'
+      }));
+    }
+  });
+  await identifyAs(named, person({ sid: '10001', dob: '2001-01-04' }));
+  named.sandbox.openQuestion('I feel unsafe or I am being harassed');
+  assert.equal(named.opened.length, 0);
+  assert.equal(named.mails.length, 0);
+  clickMsg(named);
+  const hid = parseMailto(named.mails[0]);
+  assert.equal(hid.to, 'chijennifer@chinet.org');
+  assert.equal(hid.subject.includes('I feel unsafe'), false);
+  assert.equal(hid.body.includes('I feel unsafe'), false);
+  assert.match(hid.body, /\[Describe what happened\.\.\.\]/);
+  assertNoSecrets(hid.subject + '\n' + hid.body);
+  const callsBefore = named.calls.length;
+  clickMsg(named);
+  assert.equal(named.calls.length, callsBefore);
+});
+
+test('email and WhatsApp follow the same coordinator and do not guess', async () => {
+  const team = {
+    jenn: { email: 'chijennifer@chinet.org', whatsapp: 'https://wa.me/16099484483', greet: 'Jennifer', short: 'Jenn' },
+    kathleen: { email: 'chikathleenr@chinet.org', whatsapp: 'https://wa.me/16093503606', greet: 'Kathleen', short: 'Kathleen' },
+    victor: { email: 'chivictor@chinet.org', whatsapp: 'https://wa.me/16098922969', greet: 'Victor', short: 'Victor' },
+    amy: { email: 'chiamyj@chinet.org', whatsapp: 'https://wa.me/17178805970', greet: 'Amy', short: 'Amy' },
+    dasha: { email: 'chidashak@chinet.org', whatsapp: 'https://wa.me/16465121122', greet: 'Dasha', short: 'Dasha' }
+  };
+  async function route(extra) {
+    const page = await loadPage({
+      endpoint: 'https://lookup.test/exec',
+      href: 'https://example.test/menu/',
+      handler() {
+        return jsonResponse(200, person(Object.assign({
+          season: 'Summer 2026',
+          employer: 'Aramark',
+          location: 'Ocean City, NJ',
+          dsStart: '2026-06-01',
+          dsEnd: '2026-09-15',
+          dob: '2001-01-04',
+          email: 'raw-secret-box@example.com',
+          emailMask: 'a••••@example.com',
+          tok: 'secret-token-value'
+        }, extra)));
+      }
+    });
+    await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
+    page.sandbox.openQuestion('My visa appointment');
+    assert.equal(page.mails.length, 0);
+    assert.equal(page.opened.length, 0);
+    clickMsg(page);
+    clickWhatsApp(page);
+    return { page, mail: parseMailto(page.mails[0]), wa: page.opened[0], me: stored(page.memory) };
+  }
+  function expectWho(result, key) {
+    const who = team[key];
+    assert.equal(result.mail.to, who.email);
+    assert.equal(result.mail.subject, 'Summer 2026 / My visa appointment / 10001 / Ada Lovelace');
+    assert.match(result.mail.body, new RegExp('^Hello ' + who.greet + ','));
+    assert.match(result.mail.body, /My name is Ada Lovelace\./);
+    assert.match(result.mail.body, /Student ID: 10001/);
+    assert.match(result.mail.body, /Employer: Aramark/);
+    assert.match(result.mail.body, /Location: Ocean City, NJ/);
+    assert.match(result.mail.body, /Question: My visa appointment/);
+    assert.match(result.mail.body, /\[Describe what happened\.\.\.\]$/);
+    assertNoSecrets(result.mail.subject + '\n' + result.mail.body);
+    assert.equal(result.mail.body.includes('Romania'), false);
+    whatsAppText(result.wa, who.whatsapp);
+    assert.equal(result.page.els.whatsapp.textContent, 'WhatsApp ' + who.short);
+    assert.equal(result.page.els.whatsapp.getAttribute('aria-label'), 'WhatsApp ' + who.short);
+    assert.equal(JSON.stringify(result.me).includes(who.email), false);
+    assert.equal(JSON.stringify(result.me).includes('wa.me'), false);
+  }
+
+  expectWho(await route({ coordinator: 'Kathleen' }), 'kathleen');
+  expectWho(await route({ Coordinators: 'Victor Purilla' }), 'victor');
+  expectWho(await route({ coordinator: 'Amy' }), 'amy');
+  expectWho(await route({ Coordinators: 'Amy Jackson' }), 'amy');
+  expectWho(await route({ coordinator: 'Dasha Komarova' }), 'dasha');
+  expectWho(await route({ Coordinators: 'Jennifer Campbell' }), 'jenn');
+  expectWho(await route({}), 'jenn');
+
+  const messy = 'Kathleen and Victor';
+  const ambiguous = await route({ Coordinators: messy, phone: '555' });
+  expectWho(ambiguous, 'jenn');
+  assert.equal(ambiguous.me.coordinator, undefined);
+  assert.equal(JSON.stringify(ambiguous.me).includes(messy), false);
+  assert.equal(JSON.stringify(ambiguous.me).includes('555'), false);
+
+  const disagree = await route({ coordinator: 'Amy', Coordinators: 'Dasha' });
+  expectWho(disagree, 'jenn');
+  assert.equal(disagree.me.coordinator, undefined);
+
+  const kathleen = await route({ coordinator: 'Kathleen Rizzo' });
+  const pick = kathleen.page.sandbox.projectChooser({
+    sid: '10001', first: 'Ada', last: 'Lovelace', agency: 'AEX', season: 'Summer 2026',
+    coordinator: 'Kathleen', Coordinators: 'Kathleen Rizzo', employer: 'Secret Employer', email: 'secret@example.com'
+  });
+  assert.equal(pick.coordinator, undefined);
+  assert.equal(pick.employer, undefined);
+  assert.equal(pick.email, undefined);
+  assert.equal(JSON.stringify(pick).includes('Kathleen'), false);
+
+  const decide = kathleen.page.sandbox.coordinatorFromRecord;
+  assert.equal(decide({ coordinator: 'Victor' }), 'victor');
+  assert.equal(decide({ Coordinators: 'Jennifer Campbell' }), 'jenn');
+  assert.equal(decide({ Coordinators: 'Jennifer' }), 'jenn');
+  assert.equal(decide({ Coordinators: 'Vic' }), 'jenn');
+  assert.equal(decide({ Coordinators: 'Kathleen, Jenn' }), 'jenn');
+  assert.equal(decide({ coordinator: 'Amy Jackson extra' }), 'jenn');
+  assert.equal(decide({ coordinator: 'Amy', Coordinators: 'Dasha' }), 'jenn');
+  assert.equal(decide({}), 'jenn');
+});
+
+test('WhatsApp button follows Eastern office hours', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { return jsonResponse(200, person({ dob: '2001-01-04' })); }
+  });
+  const open = page.sandbox.whatsAppOpen;
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.equal(/urgent/i.test(html), false);
+  const noteText = html.slice(html.indexOf('id="whatsappnote"'), html.indexOf('</div>', html.indexOf('id="whatsappnote"')));
+  assert.match(noteText, /WhatsApp is available Monday to Friday, 9am to 5pm Eastern\./);
+  assert.equal(noteText.includes('911'), false);
+  assert.equal(page.els.whatsapp.textContent, 'WhatsApp Jenn');
+  const content = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  assert.match(content, /If you are in immediate danger, call 911 first\./);
+  assert.match(content, /call or text 988/);
+
+  function show(iso){
+    page.opened.length = 0;
+    page.sandbox.refreshWhatsApp(iso);
+    return { button: page.els.whatsapp.hidden, line: page.els.whatsappnote.hidden, mail: page.els.msg.hidden };
+  }
+  assert.deepEqual(show('2026-01-06T13:59:59Z'), { button: true, line: false, mail: false });
+  assert.deepEqual(show('2026-01-06T14:00:00Z'), { button: false, line: true, mail: false });
+  assert.deepEqual(show('2026-01-06T21:59:59Z'), { button: false, line: true, mail: false });
+  assert.deepEqual(show('2026-01-06T22:00:00Z'), { button: true, line: false, mail: false });
+  assert.equal(open('2026-07-07T12:59:59Z'), false);
+  assert.equal(open('2026-07-07T13:00:00Z'), true);
+  assert.equal(open('2026-07-07T20:59:59Z'), true);
+  assert.equal(open('2026-07-07T21:00:00Z'), false);
+  assert.equal(open('2026-01-10T15:00:00Z'), false);
+  assert.equal(open('2026-01-11T18:00:00Z'), false);
+  assert.equal(open('2026-01-06T14:00:00Z'), true);
+  assert.equal(open('2026-01-06T22:00:00Z'), false);
+
+  page.sandbox.setOfficeNow('2026-01-06T22:00:00Z');
+  clickWhatsApp(page);
+  assert.equal(page.opened.length, 0);
+  clickMsg(page);
+  assert.equal(parseMailto(page.mails[0]).to, 'chijennifer@chinet.org');
+  page.sandbox.setOfficeNow('2026-01-06T15:00:00Z');
+  clickWhatsApp(page);
+  assert.equal(page.opened.length, 1);
+
+  await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
+  page.sandbox.setOfficeNow('2026-01-10T15:00:00Z');
+  page.sandbox.openQuestion('I feel unsafe or I am being harassed');
+  assert.match(page.els.view.innerHTML, /call 911 first/);
+  page.sandbox.openQuestion('I am struggling or homesick');
+  assert.match(page.els.view.innerHTML, /call or text 988/);
+  assert.equal(page.els.whatsapp.hidden, true);
+  assert.equal(page.els.whatsappnote.hidden, false);
+});
+
+test('CHI office holidays hide WhatsApp for the Eastern date', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a holiday must not look anyone up'); }
+  });
+  const open = page.sandbox.whatsAppOpen;
+  const list = fs.readFileSync(path.join(ROOT, 'assets', 'office-holidays.js'), 'utf8');
+  assert.match(list, /2026-11-11/);
+  assert.match(list, /Veterans Day/);
+  assert.match(list, /2027-11-01/);
+  assert.match(list, /CHI Founders' Day/);
+  function show(iso){
+    page.sandbox.refreshWhatsApp(iso);
+    return { button: page.els.whatsapp.hidden, line: page.els.whatsappnote.hidden, mail: page.els.msg.hidden };
+  }
+  assert.deepEqual(show('2026-11-10T15:00:00Z'), { button: false, line: true, mail: false });
+  assert.deepEqual(show('2026-11-11T15:00:00Z'), { button: true, line: false, mail: false });
+  assert.deepEqual(show('2026-11-12T15:00:00Z'), { button: false, line: true, mail: false });
+  assert.equal(open('2026-11-11T15:00:00Z'), false);
+  assert.equal(open('2026-11-10T15:00:00Z'), true);
+  page.sandbox.setOfficeNow('2026-11-11T15:00:00Z');
+  page.opened.length = 0;
+  clickWhatsApp(page);
+  assert.equal(page.opened.length, 0);
+  clickMsg(page);
+  assert.equal(parseMailto(page.mails[page.mails.length - 1]).to, 'chijennifer@chinet.org');
+  const note = page.els.whatsappnote.textContent || '';
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /WhatsApp is available Monday to Friday, 9am to 5pm Eastern\./);
+  assert.equal(note.includes('911'), false);
+});
+
+test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('the locked tile must not look anyone up'); }
+  });
+  assert.equal(page.els.bar.hidden, false);
+  assert.ok(page.els.msg);
+  assert.equal(page.sandbox.openQuestion('My visa appointment'), true);
+  const locked = page.els.view.innerHTML;
+  assert.match(locked, /This answer is different for every person/);
+  assert.match(locked, /Student ID and your date of birth/);
+  assert.equal(locked.includes('CHI pays your SEVIS fee'), false);
+  assert.equal(locked.includes('American Experience'), false);
+  assert.equal(page.calls.length, 0);
+  assert.equal(page.els.bar.hidden, false);
 });

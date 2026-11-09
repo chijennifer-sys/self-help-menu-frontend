@@ -90,6 +90,7 @@ function enrich(p){
 function setMe(p){
   ME = p ? enrich(p) : null;
   try{ ME ? localStorage.setItem('chi_me', JSON.stringify(ME)) : localStorage.removeItem('chi_me'); }catch(e){}
+  if(typeof refreshWhatsApp === 'function') refreshWhatsApp();
 }
 
 /* Empty ENDPOINT stays on the demo roster. A non-empty ENDPOINT is one GET
@@ -168,6 +169,14 @@ function adaptFull(raw){
   else if(asText(raw.name)) out.name = asText(raw.name);
   const country = asText(raw.country);
   if(country) out.country = country;
+  /* Birth Country is the verified roster column. Keep it beside country so
+     this tile can use it without rewriting every other {country} sentence. */
+  const birthCountry = asText(raw.birthCountry) || asText(raw.birth_country) || asText(raw['Birth Country']);
+  if(birthCountry) out.birthCountry = birthCountry;
+  const office = asText(raw.agencyOfficeCode) || asText(raw['Agency Office Code']);
+  if(office) out.agencyOfficeCode = office;
+  const coordinator = coordinatorFromRecord(raw);
+  if(coordinator !== 'jenn') out.coordinator = coordinator;
   if(asText(raw.emailMask)) out.emailMask = safeEmailMask(raw.emailMask);
   else if(asText(raw.email) && String(raw.email).indexOf('@') > 0) out.emailMask = maskEmail(raw.email);
   return out.name || out.sid ? out : null;
@@ -384,7 +393,7 @@ function qrow(t){
   return `<button class="tile" data-leaf="${i}" style="--tc:var(--s${st.n});--tl:var(--s${st.n}-soft);--ts:var(--s${st.n}-soft)">
     ${ICO(t.ic)}
     <span class="lab">${esc(t.q)}</span>
-    <span class="rt">${t.r === 'Answer' ? 'Answer here' : t.r === 'File' ? 'Short form' : t.r === 'Team' ? 'A person replies' : 'Your agency'}</span>
+    <span class="rt">${t.r === 'Answer' ? 'Answer here' : t.r === 'File' ? 'Short form' : t.r === 'Team' ? 'A person replies' : 'Your CHI team'}</span>
   </button>`;
 }
 
@@ -395,6 +404,47 @@ function renderSearch(){
     ? `<div class="sect-h" style="padding-top:14px"><h2>${hits.length} ${hits.length===1?'result':'results'}</h2><p>Across every stage of the program.</p></div>
        <div class="grid">${hits.map(t=>qrow(t)).join('')}</div>`
     : `<div class="empty">Nothing matches that word.<br>Try SSN, hours, housing, visa or second job.</div>`;
+}
+
+function looksLikeAgencyCode(v){
+  return /^[A-Z0-9]{2,6}$/.test(String(v || ''));
+}
+
+/* Agency Office Code stays internal. Show the mapped name, never a bare code. */
+function visaAgencyName(me){
+  if(!me) return '';
+  const code = asText(me.agency) || asText(me.agencyOfficeCode);
+  if(code && AGENCY_NAME[code]) return AGENCY_NAME[code];
+  const given = asText(me.agencyName);
+  if(!given || given === code || looksLikeAgencyCode(given)) return '';
+  return given;
+}
+
+function visaCountry(me){
+  if(!me) return '';
+  return asText(me.country) || asText(me.birthCountry);
+}
+
+function visaYouHtml(me){
+  const agencyName = visaAgencyName(me);
+  const country = visaCountry(me);
+  if(agencyName && country) return 'You are coming through <b>' + esc(agencyName) + '</b> in <b>' + esc(country) + '</b>. They book your appointment, not CHI.';
+  if(agencyName) return 'You are coming through <b>' + esc(agencyName) + '</b>. They book your appointment, not CHI.';
+  if(country) return 'You are coming through your agency in <b>' + esc(country) + '</b>. They book your appointment, not CHI.';
+  return '';
+}
+
+function leafBody(t){
+  return t.body.map(p => {
+    if(t.q === 'My visa appointment' && String(p).indexOf('Is your appointment after your start date') === 0){
+      const when = ME && asText(ME.dsStartF);
+      const sentence = when
+        ? 'Is your appointment after your start date, <b>' + esc(when) + '</b>? CHI can write a letter to move your dates.'
+        : esc(p);
+      return '<p>' + sentence + '</p>';
+    }
+    return '<p>' + esc(fill(p)) + '</p>';
+  }).join('');
 }
 
 function renderLeaf(){
@@ -429,6 +479,9 @@ function renderLeaf(){
   if(url && ME){
     url += `?sid=${encodeURIComponent(ME.sid)}&first=${encodeURIComponent(ME.first)}&last=${encodeURIComponent(ME.last)}&employer=${encodeURIComponent(ME.employer)}`;
   }
+  const youHtml = t.q === 'My visa appointment'
+    ? visaYouHtml(ME)
+    : (t.you && ME && !/\{\w+\}/.test(fill(t.you)) ? fill(t.you) : '');
   view.innerHTML = `
     <div class="crumb"><button data-go="${state.q?'search':'stage'}" data-stage="${t.s}">${back} ${esc(state.q?'Results':s.t)}</button></div>
     <article class="leaf">
@@ -438,8 +491,8 @@ function renderLeaf(){
       </div>
       <div class="leaf-b">
         <p class="lead">${esc(fill(t.lead))}</p>
-        ${t.you && ME && !/\{\w+\}/.test(fill(t.you)) ? `<div class="you"><span class="yl">Your programme</span>${fill(t.you)}</div>` : ''}
-        ${t.body.map(p=>`<p>${esc(fill(p))}</p>`).join('')}
+        ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
+        ${leafBody(t)}
         ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${esc(fill(t.clock.t))}</div>` : ''}
         ${t.hz ? `<div class="note" style="background:var(--ground);border-left-color:var(--s${STAGES.find(x=>x.key===t.s).n})">Housing has tiles at every point in your programme. Search the word housing and they all come up.</div>` : ''}
         ${t.sample ? `<div class="sample">
@@ -762,10 +815,16 @@ document.addEventListener('click', e => {
   if(st && !lf){ state.stage=st.dataset.stage; state.leaf=null; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
   if(ac){
     const k = ac.dataset.act;
-    ac.textContent = k==='agency' ? (ME && ME.agencyName ? ME.agencyName + ' is your agency. Their contact details are on your job offer.' : 'Your agency contact is on your job offer')
-      : k==='answer' ? 'Go back and choose another topic'
-      : k==='template' ? 'Sent. Check your email, including spam'
-      : 'Your CHI team has this. You will hear back within one working day';
+    if(k==='agency' || k==='chi'){
+      const bar = document.getElementById('msg');
+      if(bar && bar.focus) bar.focus();
+      if(bar && bar.scrollIntoView) bar.scrollIntoView({block:'nearest'});
+      ac.textContent = 'Use Message my CHI team at the bottom of the page';
+    } else {
+      ac.textContent = k==='answer' ? 'Go back and choose another topic'
+        : k==='template' ? 'Sent. Check your email, including spam'
+        : 'Your CHI team has this. You will hear back within one working day';
+    }
     ac.disabled = true; ac.style.opacity = '.75'; ac.style.cursor = 'default';
   }
 });
@@ -786,9 +845,205 @@ sIn.addEventListener('input', () => {
 });
 sClear.addEventListener('click', () => { sIn.value=''; state.q=''; sClear.hidden=true; sIn.focus(); render(); });
 
-document.getElementById('msg').addEventListener('click', function(){
-  this.innerHTML = '<span>Your CHI team has this, you will hear back within one working day</span>';
+/* Approved coordinators. Email is the main draft. WhatsApp is the second button.
+   A click opens a draft only. Nothing is sent until the participant taps Send.
+   Names match the whole value only. Unknown or mixed values use Jennifer. */
+const CHI_TEAM = {
+  jenn: { greet:'Jennifer', short:'Jenn', email:'chijennifer@chinet.org', whatsapp:'https://wa.me/16099484483' },
+  kathleen: { greet:'Kathleen', short:'Kathleen', email:'chikathleenr@chinet.org', whatsapp:'https://wa.me/16093503606' },
+  victor: { greet:'Victor', short:'Victor', email:'chivictor@chinet.org', whatsapp:'https://wa.me/16098922969' },
+  amy: { greet:'Amy', short:'Amy', email:'chiamyj@chinet.org', whatsapp:'https://wa.me/17178805970' },
+  dasha: { greet:'Dasha', short:'Dasha', email:'chidashak@chinet.org', whatsapp:'https://wa.me/16465121122' }
+};
+const COORDINATOR_NAMES = {
+  'jenn':'jenn', 'jennifer campbell':'jenn',
+  'kathleen':'kathleen', 'kathleen rizzo':'kathleen',
+  'victor':'victor', 'victor purilla':'victor',
+  'amy':'amy', 'amy jackson':'amy',
+  'dasha':'dasha', 'dasha komarova':'dasha'
+};
+const PRIVATE_QUESTION = {
+  'I feel unsafe or I am being harassed':1,
+  'I am struggling or homesick':1,
+  'I am sick or I am hurt':1,
+  'I have a toothache':1,
+  'I was in an accident':1
+};
+
+function coordinatorKey(value){
+  const s = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return COORDINATOR_NAMES[s] || '';
+}
+
+/* coordinator is the minimal key. Coordinators is the roster header.
+   A blank field is ignored. A field that is not exactly one approved name,
+   or two fields that disagree, falls back to Jenn. */
+function coordinatorFromRecord(raw){
+  if(!raw || typeof raw !== 'object') return 'jenn';
+  const present = [];
+  ['coordinator', 'Coordinators'].forEach(key => {
+    if(raw[key] === undefined || raw[key] === null) return;
+    if(String(raw[key]).trim() === '') return;
+    present.push(coordinatorKey(raw[key]));
+  });
+  if(!present.length) return 'jenn';
+  if(present.some(key => !key)) return 'jenn';
+  const unique = present.filter((key, i) => present.indexOf(key) === i);
+  if(unique.length !== 1) return 'jenn';
+  return unique[0];
+}
+
+function assignedCoordinator(){
+  const key = ME && ME.coordinator;
+  return CHI_TEAM[key] ? key : 'jenn';
+}
+
+function currentQuestion(){
+  if(state.leaf === null || !T[state.leaf]) return '';
+  const q = asText(T[state.leaf].q);
+  if(PRIVATE_QUESTION[q]) return '';
+  return q;
+}
+
+function draftLines(){
+  const who = CHI_TEAM[assignedCoordinator()];
+  const question = currentQuestion();
+  const lines = ['Hello ' + who.greet + ',', '', 'I need help from my CHI team.'];
+  if(ME){
+    const name = asText(ME.name);
+    const sid = asText(ME.sid);
+    const employer = asText(ME.employer);
+    const location = asText(ME.location);
+    const start = asText(ME.dsStartF);
+    const end = asText(ME.dsEndF);
+    if(name) lines.push('My name is ' + name + '.');
+    if(sid) lines.push('Student ID: ' + sid);
+    if(employer) lines.push('Employer: ' + employer);
+    if(location) lines.push('Location: ' + location);
+    if(start && end) lines.push('Dates: ' + start + ' to ' + end);
+    else if(start || end) lines.push('Dates: ' + (start || end));
+  }
+  if(question) lines.push('Question: ' + question);
+  lines.push('', '[Describe what happened...]');
+  const subjectBits = [];
+  if(ME && asText(ME.season)) subjectBits.push(asText(ME.season));
+  if(question) subjectBits.push(question);
+  if(ME && asText(ME.sid)) subjectBits.push(asText(ME.sid));
+  if(ME && asText(ME.name)) subjectBits.push(asText(ME.name));
+  return {
+    who: who,
+    subject: subjectBits.length ? subjectBits.join(' / ') : 'Help',
+    body: lines.join('\n')
+  };
+}
+
+function chiMailUrl(){
+  const draft = draftLines();
+  return 'mailto:' + draft.who.email
+    + '?subject=' + encodeURIComponent(draft.subject)
+    + '&body=' + encodeURIComponent(draft.body);
+}
+
+function chiWhatsAppUrl(){
+  const who = CHI_TEAM[assignedCoordinator()];
+  let greeting = 'Hello, I need help from my CHI team.';
+  if(ME){
+    const bits = [];
+    const name = asText(ME.name);
+    const sid = asText(ME.sid);
+    if(name) bits.push('I am ' + name);
+    if(sid) bits.push('Student ID ' + sid);
+    if(bits.length) greeting = 'Hello. ' + bits.join(', ') + '.';
+  }
+  let text = greeting;
+  const question = currentQuestion();
+  if(question) text += '\nI am looking at: ' + question;
+  return who.whatsapp + '?text=' + encodeURIComponent(text);
+}
+
+function openMailDraft(url){
+  const a = document.createElement('a');
+  a.href = url;
+  if(a.setAttribute) a.setAttribute('rel', 'noopener');
+  if(document.body && document.body.appendChild) document.body.appendChild(a);
+  if(a.click) a.click();
+  if(a.remove) a.remove();
+}
+
+document.getElementById('msg').addEventListener('click', function(e){
+  if(e && e.preventDefault) e.preventDefault();
+  openMailDraft(chiMailUrl());
 });
+/* Office clock is America/New_York, including daylight saving. The WhatsApp
+   button is Monday to Friday, 9:00:00 through 16:59:59, except OFFICE_HOLIDAYS. */
+const OFFICE_HOLIDAY_DATES = {};
+if(typeof OFFICE_HOLIDAYS !== 'undefined'){
+  OFFICE_HOLIDAYS.forEach(item => {
+    if(item && item.date) OFFICE_HOLIDAY_DATES[item.date] = 1;
+  });
+}
+let officeNow = null;
+function setOfficeNow(value){
+  officeNow = value ? new Date(value) : null;
+  refreshWhatsApp();
+}
+function officeClock(){
+  return officeNow ? new Date(officeNow.getTime()) : new Date();
+}
+function whatsAppOpen(now){
+  const date = now ? new Date(now) : officeClock();
+  let parts;
+  try{
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(date);
+  }catch(e){ return false; }
+  const bag = {};
+  parts.forEach(p => { bag[p.type] = p.value; });
+  const y = Number(bag.year), mo = Number(bag.month), d = Number(bag.day);
+  let hour = Number(bag.hour);
+  if(hour === 24) hour = 0;
+  const minute = Number(bag.minute), second = Number(bag.second);
+  const weekday = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+  const easternDate = String(y) + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  if(OFFICE_HOLIDAY_DATES[easternDate]) return false;
+  if(weekday === 0 || weekday === 6) return false;
+  const secs = hour * 3600 + minute * 60 + second;
+  return secs >= 9 * 3600 && secs < 17 * 3600;
+}
+function whatsAppButtonLabel(){
+  const who = CHI_TEAM[assignedCoordinator()] || CHI_TEAM.jenn;
+  return 'WhatsApp ' + who.short;
+}
+function refreshWhatsApp(now){
+  const open = whatsAppOpen(now);
+  const btn = document.getElementById('whatsapp');
+  const note = document.getElementById('whatsappnote');
+  if(btn){
+    const label = whatsAppButtonLabel();
+    const span = btn.querySelector && btn.querySelector('span');
+    if(span) span.textContent = label;
+    else btn.textContent = label;
+    if(btn.setAttribute) btn.setAttribute('aria-label', label);
+    btn.hidden = !open;
+    if(btn.style) btn.style.display = open ? '' : 'none';
+  }
+  if(note){
+    note.hidden = open;
+    if(note.style) note.style.display = open ? 'none' : '';
+  }
+}
+
+document.getElementById('whatsapp').addEventListener('click', function(e){
+  if(e && e.preventDefault) e.preventDefault();
+  if(!whatsAppOpen()) return;
+  if(window.open) window.open(chiWhatsAppUrl(), '_blank', 'noopener,noreferrer');
+});
+refreshWhatsApp();
+if(typeof setInterval === 'function') setInterval(function(){ refreshWhatsApp(); }, 60000);
 document.getElementById('portal').addEventListener('click', () => {
   const i = T.findIndex(t => t.q === 'I cannot get into my CHI portal');
   if(i < 0) return;
@@ -812,5 +1067,15 @@ vw.addEventListener('click', ()=>setView(true));
 document.addEventListener('keydown', e => {
   if(e.key==='Enter' && ['idq','idq2','iddob','iddob2'].indexOf(e.target.id) >= 0) doLookup();
 });
+
+function openQuestion(q){
+  const i = T.findIndex(t => t.q === q);
+  if(i < 0) return false;
+  state.q = '';
+  state.leaf = i;
+  state.stage = T[i].s;
+  render();
+  return true;
+}
 
 var BOOT = (async () => { await useLinkToken(); renderId(); render(); })();
