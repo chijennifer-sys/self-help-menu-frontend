@@ -70,7 +70,11 @@ function enrich(p){
   m.insStartF = st ? FMT(addDays(st, -7)) : '';
   m.sevisDueF = ar ? FMT(addDays(ar, 3)) : '';
   m.sevisBy = m.sevisDueF;
-  m.graceEnd = en ? FMT(addDays(en, 30)) : '';
+  const rawWorked = asText(p.lastDayWorked || p.lastWorkDay).slice(0, 10);
+  const worked = /^\d{4}-\d{2}-\d{2}$/.test(rawWorked) ? D(rawWorked) : null;
+  if(worked) m.lastDayWorked = rawWorked;
+  m.lastDayWorkedF = FMT(worked);
+  m.graceEnd = worked ? FMT(addDays(worked, 30)) : '';
   m.proofCutoff = en ? FMT(addDays(en, -16)) : '';
   m.earlyOk = m.insStartF;
   m.dsStartF = FMT(st); m.dsEndF = FMT(en); m.arrivalF = FMT(ar);
@@ -181,7 +185,7 @@ function looksLikePerson(o){
 function adaptFull(raw){
   if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
-  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone','employerAddress'].forEach(k => {
+  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone','employerAddress','lastDayWorked','lastWorkDay'].forEach(k => {
     const v = asText(raw[k]);
     if(v) out[k] = v;
   });
@@ -397,6 +401,104 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 const chev = '<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const back = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 
+let nextStepsNow = null;
+function setNextStepsNow(value){ nextStepsNow = value ? new Date(value) : null; }
+function menuDay(){
+  const d = nextStepsNow ? new Date(nextStepsNow.getTime()) : new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function rosterDay(v){
+  const s = asText(v).slice(0, 10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return D(s);
+}
+function shiftDay(d, n){ const x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+function onOrAfterDay(a, b){ return a.getTime() >= b.getTime(); }
+function onOrBeforeDay(a, b){ return a.getTime() <= b.getTime(); }
+function normWord(v){ return asText(v).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function housingIsVerified(v){
+  const s = normWord(v);
+  if(!s) return null;
+  return s === 'verified' || s === 'approved' || s === 'yes' || s === 'y';
+}
+function ssnState(v){
+  const s = normWord(v);
+  if(!s) return null;
+  if(s === 'yes' || s === 'y') return 'yes';
+  if(s === 'no' || s === 'n') return 'no';
+  return null;
+}
+function sevisValidated(v){
+  const s = normWord(v);
+  return s === 'validated' || s === 'active' || s === 's' || s === 'sevis active';
+}
+function sevisActive(v){
+  const s = normWord(v);
+  return s === 'active' || s === 's' || s === 'sevis active';
+}
+function nextStepItems(){
+  if(!ME) return [];
+  const today = menuDay();
+  const start = rosterDay(ME.dsStart);
+  const end = rosterDay(ME.dsEnd);
+  const arrival = rosterDay(ME.arrival);
+  const worked = rosterDay(ME.lastDayWorked);
+  const items = [];
+  const sevis = normWord(ME.sevisStatus);
+  if(arrival && sevis && !sevisValidated(sevis) && onOrAfterDay(today, arrival) && asText(ME.sevisDueF)){
+    items.push({ priority:1, due:shiftDay(arrival, 3), q:'How do I validate my SEVIS record',
+      text:'Validate your SEVIS record by ' + asText(ME.sevisDueF) + '. Use your housing address and room number.' });
+  }
+  if(worked && today.getTime() > worked.getTime() && onOrBeforeDay(today, shiftDay(worked, 30))){
+    const leaveBy = asText(ME.graceEnd) || '30 days after your last day of work';
+    items.push({ priority:2, due:shiftDay(worked, 30), q:'When do I have to leave the United States',
+      text:'Your 30-day grace period started on your last day of work. You cannot work now. Leave by ' + leaveBy + '. Send your boarding pass photo after you fly.' });
+  }
+  if(arrival && onOrAfterDay(today, arrival) && onOrBeforeDay(today, shiftDay(arrival, 14))){
+    items.push({ priority:3, due:shiftDay(arrival, 14), q:'I lost my job',
+      text:'Your first 2 weeks: call in before any missed shift, wait to be checked out, phone away, one meal per shift, declare your tips.' });
+  }
+  if(end && onOrAfterDay(today, shiftDay(end, -45)) && onOrBeforeDay(today, end)){
+    items.push({ priority:4, due:end, q:'I want to go home early',
+      text:'Plan your last day: tell ' + (asText(ME.employer) || 'your employer') + ' a week ahead if you will finish early. Finishing work early is not the same as leaving the country early.' });
+  }
+  const housed = housingIsVerified(ME.housingStatus);
+  if(housed === false && start && onOrAfterDay(today, shiftDay(start, -28)) && onOrBeforeDay(today, start)){
+    items.push({ priority:5, due:start, q:'Where do I verify my housing',
+      text:'Verify your housing in the portal now. It must be done 4 weeks before you arrive. You also need $1,500 for your first weeks.' });
+  }
+  if(arrival && onOrAfterDay(today, shiftDay(arrival, 25)) && onOrBeforeDay(today, shiftDay(arrival, 35))){
+    items.push({ priority:6, due:shiftDay(arrival, 35), q:'Can I change to a different employer',
+      text:'Never stop going to work until CHI emails you an approval for a new job.' });
+  }
+  if(end && onOrAfterDay(today, shiftDay(end, -21)) && onOrBeforeDay(today, end)){
+    items.push({ priority:7, due:end, q:'How do I get my final paycheck',
+      text:'Plan your last paycheck: contact your employer directly to arrange a check that arrives after you leave. Do not mail it to CHI. CHI will not deposit it. Keep your bank account open.' });
+  }
+  if(ssnState(ME.hasSSN) === 'no' && arrival && today.getTime() > shiftDay(arrival, 10).getTime()){
+    const by = asText(ME.ssnBy);
+    items.push({ priority:8, due:shiftDay(arrival, 10), q:'How do I apply for my Social Security Number',
+      text:'Your Social Security Number is not on file. Visit the office only after the activation email.' + (by ? ' Do it by ' + by + '.' : '') });
+  }
+  if(start && sevis && sevisActive(sevis) && onOrAfterDay(today, start) && onOrBeforeDay(today, shiftDay(start, 7))){
+    items.push({ priority:9, due:shiftDay(start, 7), q:'When do I start working',
+      text:'Finish your employer onboarding this week. Your first shift comes after the paperwork, not on the DS start date alone.' });
+  }
+  if(arrival && onOrAfterDay(today, arrival) && onOrBeforeDay(today, shiftDay(arrival, 7))){
+    items.push({ priority:10, due:shiftDay(arrival, 7), q:'Where do I find my insurance card',
+      text:'Save your insurance card on your phone now: UHC Options PPO through IMG, from the Envisage Student Zone.' });
+  }
+  items.sort((a, b) => a.priority - b.priority || a.due - b.due);
+  return items.slice(0, 3);
+}
+function nextStepsHtml(){
+  const items = nextStepItems();
+  if(!items.length) return '';
+  return '<section class="nextsteps"><h2>My next steps</h2>' + items.map(item =>
+    '<button type="button" class="nextitem" data-q="' + esc(item.q) + '"><span>' + esc(item.text) + '</span></button>'
+  ).join('') + '</section>';
+}
+
 function render(){
   if(ME && ME.stage && !state.q && state.leaf === null && !state.stage) state.stage = ME.stage;
   if(state.q){ return renderSearch(); }
@@ -407,6 +509,7 @@ function render(){
 
 function renderHome(){
   view.innerHTML = `
+    ${ME ? nextStepsHtml() : ''}
     <div class="ask"><span class="asklab">Where are you now?</span></div>
     <div class="grid q4">
       ${STAGES.map(s=>{
@@ -465,6 +568,7 @@ function renderStage(){
     ? `<div class="sect-h tight">${lead}</div>`
     : `<div class="sect-h"><h2>${esc(s.t)}</h2>${lead}</div>`;
   view.innerHTML = `
+    ${ME ? nextStepsHtml() : ''}
     ${nav}
     ${headline}
     ${inner}`;
@@ -509,12 +613,10 @@ function visaCountry(me){
 }
 
 function visaYouHtml(me){
-  const agencyName = visaAgencyName(me);
   const country = visaCountry(me);
-  if(agencyName && country) return 'You are coming through <b>' + esc(agencyName) + '</b> in <b>' + esc(country) + '</b>. They book your appointment, not CHI.';
-  if(agencyName) return 'You are coming through <b>' + esc(agencyName) + '</b>. They book your appointment, not CHI.';
-  if(country) return 'You are coming through your agency in <b>' + esc(country) + '</b>. They book your appointment, not CHI.';
-  return '';
+  const base = 'Message my CHI team about your visa. That opens an email to your coordinator.';
+  if(country) return 'You are in <b>' + esc(country) + '</b>. ' + base;
+  return base;
 }
 
 /* One zone per country. A country with more than one zone, or a country
@@ -832,7 +934,7 @@ function renderWiring(){
           <dt>Worth knowing</dt><dd>A five digit SID on its own identifies a participant, and SIDs run in sequence. Anyone typing numbers in that range sees a name, an employer and programme dates. Email is never displayed. If that is more than the office wants to accept, the fix is not a second field, it is the personalised link in the drip email, which removes typing altogether and can carry a token no one can guess.</dd>
           <dt>Returns</dt><dd>One participant, not a list: <code>sid, first, last, email, agency, country, employer, location, job, dsStart, dsEnd, arrival, hasSSN</code>. Never the whole row, never anyone else.</dd>
           <dt>Agency code</dt><dd>The code comes back and stays internal. It is what routes the case, picks the main office contact and groups the reporting, and a participant never sees it. The page carries the 52 code to name pairs from the Agencies sheet and shows the name instead, so AEX reads as American Experience and EXPB as Experience Work and Travel Doo. If a new agency is added to the roster without a row in the Agencies sheet, the page falls back to the country rather than printing a code.</dd>
-          <dt>Computes</dt><dd>Day in programme, days left, SEVIS validation deadline at start plus 30, SSN deadline at end minus 45, grace period end at end plus 30, and the gap between landing and the insurance start date.</dd>
+          <dt>Computes</dt><dd>Day in programme, days left, SEVIS validation within 3 days of arrival, SSN deadline at end minus 45, grace period end at last day worked plus 30, and the gap between landing and the insurance start date.</dd>
           <dt>Changes</dt><dd>The stage question disappears. The programme day is computed from the DS dates, so the page opens on the right stage instead of asking a participant to classify themselves, and the other three stages stay one tap away on a switcher. ${T.filter(t=>t.you).length} of ${T.length} tiles swap general wording for their own employer, their own dates and their own deadline. Every Tally link arrives prefilled with SID, name, employer and email.</dd>
           <dt>Gate</dt><dd>The tiles are open, the answers are not. Anyone can browse all 45 questions and search them, which is what makes a participant want in. Opening a tile asks for the Student ID, and the answer is only ever the personal one. There is no general version, so nobody reads generic wording when a specific answer exists for them, and every participant ends up knowing their own SID because it is the price of every answer.</dd>
           <dt>Stored</dt><dd>In the browser only, so they identify once and not on every visit. No cookie, no account, nothing leaves the phone.</dd>
@@ -1061,6 +1163,12 @@ document.addEventListener('click', e => {
     if(k==='pick'){ chooseListed(+idb.dataset.i); return; }
     if(k==='clear'){ setMe(null); idMode='id'; state.stage=null; state.leaf=null; renderId(); render(); return; }
     if(k==='noop'){ return; }
+  }
+  const nq = e.target.closest('[data-q]');
+  if(nq && nq.dataset.q){
+    openQuestion(nq.dataset.q);
+    window.scrollTo({top:0,behavior:'instant'});
+    return;
   }
   const st = e.target.closest('[data-stage]');
   const lf = e.target.closest('[data-leaf]');

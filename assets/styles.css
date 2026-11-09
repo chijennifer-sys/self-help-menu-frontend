@@ -149,7 +149,12 @@ a{color:var(--chi)}
   .grid.q4 .tile{min-height:56px; gap:3px}
   .grid.q4 .ico{width:21px; height:21px}
   .grid.q4 .lab{font-size:12px}
-  .ask{padding:7px 2px 6px}
+  .nextsteps{margin:8px 0 12px; padding:12px; background:var(--card); border:1px solid var(--rule)}
+.nextsteps h2{font-size:16px; letter-spacing:-.02em; margin-bottom:8px}
+.nextitem{display:block; width:100%; text-align:left; padding:10px 0; border-top:1px solid var(--rule); color:var(--ink); font-size:14.5px; line-height:1.45}
+.nextsteps .nextitem:first-of-type{border-top:0}
+.nextitem span{display:block}
+.ask{padding:7px 2px 6px}
   .ask h1{font-size:17px}
   .preview{padding:6px 9px; font-size:11px}
 }
