@@ -175,7 +175,7 @@ function adaptFull(raw){
   const office = asText(raw.agencyOfficeCode) || asText(raw['Agency Office Code']);
   if(office) out.agencyOfficeCode = office;
   const coordinator = coordinatorFromRecord(raw);
-  if(coordinator === 'kathleen' || coordinator === 'victor' || coordinator === 'amy' || coordinator === 'dasha') out.coordinator = coordinator;
+  if(coordinator !== 'jenn') out.coordinator = coordinator;
   if(asText(raw.emailMask)) out.emailMask = safeEmailMask(raw.emailMask);
   else if(asText(raw.email) && String(raw.email).indexOf('@') > 0) out.emailMask = maskEmail(raw.email);
   return out.name || out.sid ? out : null;
@@ -844,25 +844,34 @@ sIn.addEventListener('input', () => {
 });
 sClear.addEventListener('click', () => { sIn.value=''; state.q=''; sClear.hidden=true; sIn.focus(); render(); });
 
-/* Public WhatsApp destinations, approved by name. Jenn is the fallback.
-   A click opens a draft only. WhatsApp does not send until the participant taps Send.
-   Another coordinator is used only when the record's key is exactly that one name. */
-const CHI_WHATSAPP = {
-  jenn: 'https://wa.me/16099484483',
-  kathleen: 'https://wa.me/16093503606',
-  victor: 'https://wa.me/16098922969',
-  amy: 'https://wa.me/17178805970',
-  dasha: 'https://wa.me/16465121122'
+/* Approved coordinators. Email is the main draft. WhatsApp is urgent help.
+   A click opens a draft only. Nothing is sent until the participant taps Send.
+   Names match the whole value only. Unknown or mixed values use Jennifer. */
+const CHI_TEAM = {
+  jenn: { greet:'Jennifer', email:'chijennifer@chinet.org', whatsapp:'https://wa.me/16099484483' },
+  kathleen: { greet:'Kathleen', email:'chikathleenr@chinet.org', whatsapp:'https://wa.me/16093503606' },
+  victor: { greet:'Victor', email:'chivictor@chinet.org', whatsapp:'https://wa.me/16098922969' },
+  amy: { greet:'Amy', email:'chiamyj@chinet.org', whatsapp:'https://wa.me/17178805970' },
+  dasha: { greet:'Dasha', email:'chidashak@chinet.org', whatsapp:'https://wa.me/16465121122' }
+};
+const COORDINATOR_NAMES = {
+  'jenn':'jenn', 'jennifer campbell':'jenn',
+  'kathleen':'kathleen', 'kathleen rizzo':'kathleen',
+  'victor':'victor', 'victor purilla':'victor',
+  'amy':'amy', 'amy jackson':'amy',
+  'dasha':'dasha', 'dasha komarova':'dasha'
+};
+const PRIVATE_QUESTION = {
+  'I feel unsafe or I am being harassed':1,
+  'I am struggling or homesick':1,
+  'I am sick or I am hurt':1,
+  'I have a toothache':1,
+  'I was in an accident':1
 };
 
 function coordinatorKey(value){
   const s = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  if(s === 'kathleen') return 'kathleen';
-  if(s === 'victor') return 'victor';
-  if(s === 'amy' || s === 'amy jackson') return 'amy';
-  if(s === 'dasha') return 'dasha';
-  if(s === 'jenn' || s === 'jennifer') return 'jenn';
-  return '';
+  return COORDINATOR_NAMES[s] || '';
 }
 
 /* coordinator is the minimal key. Coordinators is the roster header.
@@ -883,12 +892,59 @@ function coordinatorFromRecord(raw){
   return unique[0];
 }
 
-function chiWhatsAppBase(){
+function assignedCoordinator(){
   const key = ME && ME.coordinator;
-  return (key && CHI_WHATSAPP[key]) || CHI_WHATSAPP.jenn;
+  return CHI_TEAM[key] ? key : 'jenn';
+}
+
+function currentQuestion(){
+  if(state.leaf === null || !T[state.leaf]) return '';
+  const q = asText(T[state.leaf].q);
+  if(PRIVATE_QUESTION[q]) return '';
+  return q;
+}
+
+function draftLines(){
+  const who = CHI_TEAM[assignedCoordinator()];
+  const question = currentQuestion();
+  const lines = ['Hello ' + who.greet + ',', '', 'I need help from my CHI team.'];
+  if(ME){
+    const name = asText(ME.name);
+    const sid = asText(ME.sid);
+    const employer = asText(ME.employer);
+    const location = asText(ME.location);
+    const start = asText(ME.dsStartF);
+    const end = asText(ME.dsEndF);
+    if(name) lines.push('My name is ' + name + '.');
+    if(sid) lines.push('Student ID: ' + sid);
+    if(employer) lines.push('Employer: ' + employer);
+    if(location) lines.push('Location: ' + location);
+    if(start && end) lines.push('Dates: ' + start + ' to ' + end);
+    else if(start || end) lines.push('Dates: ' + (start || end));
+  }
+  if(question) lines.push('Question: ' + question);
+  lines.push('', '[Describe what happened...]');
+  const subjectBits = [];
+  if(ME && asText(ME.season)) subjectBits.push(asText(ME.season));
+  if(question) subjectBits.push(question);
+  if(ME && asText(ME.sid)) subjectBits.push(asText(ME.sid));
+  if(ME && asText(ME.name)) subjectBits.push(asText(ME.name));
+  return {
+    who: who,
+    subject: subjectBits.length ? subjectBits.join(' / ') : 'Help',
+    body: lines.join('\n')
+  };
+}
+
+function chiMailUrl(){
+  const draft = draftLines();
+  return 'mailto:' + draft.who.email
+    + '?subject=' + encodeURIComponent(draft.subject)
+    + '&body=' + encodeURIComponent(draft.body);
 }
 
 function chiWhatsAppUrl(){
+  const who = CHI_TEAM[assignedCoordinator()];
   let greeting = 'Hello, I need help from my CHI team.';
   if(ME){
     const bits = [];
@@ -899,16 +955,27 @@ function chiWhatsAppUrl(){
     if(bits.length) greeting = 'Hello. ' + bits.join(', ') + '.';
   }
   let text = greeting;
-  if(state.leaf !== null && T[state.leaf] && T[state.leaf].q){
-    text += '\nI am looking at: ' + T[state.leaf].q;
-  }
-  return chiWhatsAppBase() + '?text=' + encodeURIComponent(text);
+  const question = currentQuestion();
+  if(question) text += '\nI am looking at: ' + question;
+  return who.whatsapp + '?text=' + encodeURIComponent(text);
+}
+
+function openMailDraft(url){
+  const a = document.createElement('a');
+  a.href = url;
+  if(a.setAttribute) a.setAttribute('rel', 'noopener');
+  if(document.body && document.body.appendChild) document.body.appendChild(a);
+  if(a.click) a.click();
+  if(a.remove) a.remove();
 }
 
 document.getElementById('msg').addEventListener('click', function(e){
   if(e && e.preventDefault) e.preventDefault();
-  const url = chiWhatsAppUrl();
-  if(window.open) window.open(url, '_blank', 'noopener,noreferrer');
+  openMailDraft(chiMailUrl());
+});
+document.getElementById('urgent').addEventListener('click', function(e){
+  if(e && e.preventDefault) e.preventDefault();
+  if(window.open) window.open(chiWhatsAppUrl(), '_blank', 'noopener,noreferrer');
 });
 document.getElementById('portal').addEventListener('click', () => {
   const i = T.findIndex(t => t.q === 'I cannot get into my CHI portal');

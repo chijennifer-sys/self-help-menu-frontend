@@ -78,6 +78,7 @@ async function loadPage({ endpoint, href, handler }) {
   const memory = new Map();
   const history = { url: '', replaceState(_s, _t, next) { history.url = next; } };
   const opened = [];
+  const mails = [];
   const windowObj = {
     location: { href },
     scrollTo() {},
@@ -114,15 +115,24 @@ async function loadPage({ endpoint, href, handler }) {
       body: null,
       getElementById: id => els[id] || null,
       addEventListener(type, fn) { make('document').addEventListener(type, fn); },
-      querySelector: sel => sel === '.shell' ? make('shell') : null
+      querySelector: sel => sel === '.shell' ? make('shell') : null,
+      createElement(tag) {
+        const el = createEl(tag);
+        el.click = () => {
+          if (String(el.href || '').indexOf('mailto:') === 0) mails.push(String(el.href));
+        };
+        el.remove = () => {};
+        return el;
+      }
     },
     navigator: { clipboard: { writeText: async () => {} } }
   };
-  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
+  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'urgent', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
   sandbox.document.body = els.body;
+  els.body.appendChild = () => {};
   vm.runInNewContext(source, sandbox, { filename: 'page.js' });
   await sandbox.BOOT;
-  return { sandbox, calls, els, memory, history, opened };
+  return { sandbox, calls, els, memory, history, opened, mails };
 }
 
 function stored(memory) {
@@ -499,10 +509,21 @@ async function identifyAs(page, record) {
   await page.sandbox.doLookup();
 }
 
-function clickMsg(page) {
-  const button = page.els.msg;
+function clickId(page, id) {
+  const button = page.els[id];
   const listeners = (button.listeners && button.listeners.click) || [];
   listeners.forEach(fn => fn.call(button, { preventDefault() {} }));
+}
+
+function clickMsg(page) { clickId(page, 'msg'); }
+function clickUrgent(page) { clickId(page, 'urgent'); }
+
+function parseMailto(url) {
+  assert.match(url, /^mailto:/);
+  const q = url.indexOf('?');
+  const to = decodeURIComponent(url.slice('mailto:'.length, q));
+  const params = new URLSearchParams(url.slice(q + 1));
+  return { to, subject: params.get('subject'), body: params.get('body') };
 }
 
 function clickAct(page, kind) {
@@ -660,7 +681,16 @@ function whatsAppText(url, base) {
   return u.searchParams.get('text');
 }
 
-test('Message my CHI team opens Jenn WhatsApp on click and not on view', async () => {
+function assertNoSecrets(text) {
+  assert.equal(text.includes('undefined'), false);
+  assert.equal(text.includes('null'), false);
+  assert.equal(text.includes('2001-01-04'), false);
+  assert.equal(text.includes('raw-secret-box@example.com'), false);
+  assert.equal(text.includes('secret-token-value'), false);
+  assert.equal(/a••••@example\.com/.test(text), false);
+}
+
+test('Message my CHI team opens an email draft on click and not on view', async () => {
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
     href: 'https://example.test/menu/',
@@ -668,15 +698,21 @@ test('Message my CHI team opens Jenn WhatsApp on click and not on view', async (
   });
   page.sandbox.openQuestion('My visa appointment');
   assert.equal(page.opened.length, 0);
+  assert.equal(page.mails.length, 0);
   assert.equal(page.calls.length, 0);
-  assert.match(page.els.msg.textContent || '', /Message my CHI team|/);
   clickMsg(page);
   assert.equal(page.calls.length, 0);
-  assert.equal(page.opened.length, 1);
+  assert.equal(page.opened.length, 0);
+  assert.equal(page.mails.length, 1);
+  const mail = parseMailto(page.mails[0]);
+  assert.equal(mail.to, 'chijennifer@chinet.org');
+  assert.equal(mail.subject, 'My visa appointment');
+  assert.match(mail.body, /^Hello Jennifer,\n\nI need help from my CHI team\.\nQuestion: My visa appointment\n\n\[Describe what happened\.\.\.\]$/);
+  assertNoSecrets(mail.subject + '\n' + mail.body);
+  clickUrgent(page);
   const anon = whatsAppText(page.opened[0]);
   assert.equal(anon, 'Hello, I need help from my CHI team.\nI am looking at: My visa appointment');
-  assert.equal(page.opened[0].includes('16099484483'), true);
-  assert.equal(/dob|@|token|email/i.test(anon), false);
+  assert.equal(page.calls.length, 0);
 
   const named = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -686,41 +722,42 @@ test('Message my CHI team opens Jenn WhatsApp on click and not on view', async (
         first: 'Ada',
         last: 'Lovelace & Co',
         sid: '10001',
+        season: 'Summer 2026',
         dob: '2001-01-04',
         email: 'raw-secret-box@example.com',
         emailMask: 'a••••@example.com',
         employer: 'Hidden Employer',
+        location: 'Ocean City, NJ',
         country: 'Romania',
-        tok: 'secret-token-value'
+        tok: 'secret-token-value',
+        dsStart: '2026-06-01',
+        dsEnd: '2026-09-15'
       }));
     }
   });
   await identifyAs(named, person({ sid: '10001', dob: '2001-01-04' }));
   named.sandbox.openQuestion('I feel unsafe or I am being harassed');
-  assert.equal(named.opened.length, 0, 'opening a tile must not open WhatsApp');
+  assert.equal(named.opened.length, 0);
+  assert.equal(named.mails.length, 0);
   clickMsg(named);
-  assert.equal(named.opened.length, 1);
-  const text = whatsAppText(named.opened[0]);
-  assert.equal(text, 'Hello. I am Ada Lovelace & Co, Student ID 10001.\nI am looking at: I feel unsafe or I am being harassed');
-  assert.equal(text.includes('2001-01-04'), false);
-  assert.equal(text.includes('raw-secret-box@example.com'), false);
-  assert.equal(text.includes('secret-token-value'), false);
-  assert.equal(text.includes('Hidden Employer'), false);
-  assert.equal(text.includes('Romania'), false);
-  assert.equal(decodeURIComponent(named.opened[0].split('text=')[1]), text);
-  assert.match(named.opened[0], /^https:\/\/wa\.me\/16099484483\?text=/);
+  const hid = parseMailto(named.mails[0]);
+  assert.equal(hid.to, 'chijennifer@chinet.org');
+  assert.equal(hid.subject.includes('I feel unsafe'), false);
+  assert.equal(hid.body.includes('I feel unsafe'), false);
+  assert.match(hid.body, /\[Describe what happened\.\.\.\]/);
+  assertNoSecrets(hid.subject + '\n' + hid.body);
   const callsBefore = named.calls.length;
   clickMsg(named);
   assert.equal(named.calls.length, callsBefore);
 });
 
-test('coordinator WhatsApp uses Kathleen, Victor, Amy, Dasha, or Jenn and does not guess', async () => {
-  const bases = {
-    kathleen: 'https://wa.me/16093503606',
-    victor: 'https://wa.me/16098922969',
-    amy: 'https://wa.me/17178805970',
-    dasha: 'https://wa.me/16465121122',
-    jenn: 'https://wa.me/16099484483'
+test('email and urgent WhatsApp follow the same coordinator and do not guess', async () => {
+  const team = {
+    jenn: { email: 'chijennifer@chinet.org', whatsapp: 'https://wa.me/16099484483', greet: 'Jennifer' },
+    kathleen: { email: 'chikathleenr@chinet.org', whatsapp: 'https://wa.me/16093503606', greet: 'Kathleen' },
+    victor: { email: 'chivictor@chinet.org', whatsapp: 'https://wa.me/16098922969', greet: 'Victor' },
+    amy: { email: 'chiamyj@chinet.org', whatsapp: 'https://wa.me/17178805970', greet: 'Amy' },
+    dasha: { email: 'chidashak@chinet.org', whatsapp: 'https://wa.me/16465121122', greet: 'Dasha' }
   };
   async function route(extra) {
     const page = await loadPage({
@@ -728,69 +765,80 @@ test('coordinator WhatsApp uses Kathleen, Victor, Amy, Dasha, or Jenn and does n
       href: 'https://example.test/menu/',
       handler() {
         return jsonResponse(200, person(Object.assign({
+          season: 'Summer 2026',
+          employer: 'Aramark',
+          location: 'Ocean City, NJ',
+          dsStart: '2026-06-01',
+          dsEnd: '2026-09-15',
           dob: '2001-01-04',
           email: 'raw-secret-box@example.com',
-          emailMask: 'a••••@example.com'
+          emailMask: 'a••••@example.com',
+          tok: 'secret-token-value'
         }, extra)));
       }
     });
     await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
     page.sandbox.openQuestion('My visa appointment');
+    assert.equal(page.mails.length, 0);
     assert.equal(page.opened.length, 0);
     clickMsg(page);
-    return { page, url: page.opened[0], me: stored(page.memory) };
+    clickUrgent(page);
+    return { page, mail: parseMailto(page.mails[0]), wa: page.opened[0], me: stored(page.memory) };
+  }
+  function expectWho(result, key) {
+    const who = team[key];
+    assert.equal(result.mail.to, who.email);
+    assert.equal(result.mail.subject, 'Summer 2026 / My visa appointment / 10001 / Ada Lovelace');
+    assert.match(result.mail.body, new RegExp('^Hello ' + who.greet + ','));
+    assert.match(result.mail.body, /My name is Ada Lovelace\./);
+    assert.match(result.mail.body, /Student ID: 10001/);
+    assert.match(result.mail.body, /Employer: Aramark/);
+    assert.match(result.mail.body, /Location: Ocean City, NJ/);
+    assert.match(result.mail.body, /Question: My visa appointment/);
+    assert.match(result.mail.body, /\[Describe what happened\.\.\.\]$/);
+    assertNoSecrets(result.mail.subject + '\n' + result.mail.body);
+    assert.equal(result.mail.body.includes('Romania'), false);
+    whatsAppText(result.wa, who.whatsapp);
+    assert.equal(JSON.stringify(result.me).includes(who.email), false);
+    assert.equal(JSON.stringify(result.me).includes('wa.me'), false);
   }
 
-  const kathleen = await route({ coordinator: 'Kathleen' });
-  const kathleenText = whatsAppText(kathleen.url, bases.kathleen);
-  assert.equal(kathleenText, 'Hello. I am Ada Lovelace, Student ID 10001.\nI am looking at: My visa appointment');
-  assert.equal(kathleen.me.coordinator, 'kathleen');
-  assert.equal(JSON.stringify(kathleen.me).includes('16093503606'), false);
-
-  const victor = await route({ Coordinators: '  VICTOR  ' });
-  assert.equal(whatsAppText(victor.url, bases.victor).includes('16098922969'), false);
-  assert.equal(victor.me.coordinator, 'victor');
-  assert.equal(JSON.stringify(victor.me).includes('Coordinators'), false);
-
-  const amy = await route({ coordinator: 'Amy' });
-  whatsAppText(amy.url, bases.amy);
-  assert.equal(amy.me.coordinator, 'amy');
-  assert.equal(JSON.stringify(amy.me).includes('17178805970'), false);
-
-  const amyJackson = await route({ Coordinators: 'Amy  Jackson' });
-  whatsAppText(amyJackson.url, bases.amy);
-  assert.equal(amyJackson.me.coordinator, 'amy');
-  assert.equal(JSON.stringify(amyJackson.me).includes('Amy  Jackson'), false);
-
-  const dasha = await route({ coordinator: 'Dasha' });
-  const dashaText = whatsAppText(dasha.url, bases.dasha);
-  assert.equal(dashaText.includes('16465121122'), false);
-  assert.equal(dasha.me.coordinator, 'dasha');
-  assert.equal(dashaText.includes('2001-01-04'), false);
-
-  const fallback = await route({});
-  whatsAppText(fallback.url, bases.jenn);
-  assert.equal(fallback.me.coordinator, undefined);
+  expectWho(await route({ coordinator: 'Kathleen' }), 'kathleen');
+  expectWho(await route({ Coordinators: 'Victor Purilla' }), 'victor');
+  expectWho(await route({ coordinator: 'Amy' }), 'amy');
+  expectWho(await route({ Coordinators: 'Amy Jackson' }), 'amy');
+  expectWho(await route({ coordinator: 'Dasha Komarova' }), 'dasha');
+  expectWho(await route({ Coordinators: 'Jennifer Campbell' }), 'jenn');
+  expectWho(await route({}), 'jenn');
 
   const messy = 'Kathleen and Victor';
   const ambiguous = await route({ Coordinators: messy, phone: '555' });
-  whatsAppText(ambiguous.url, bases.jenn);
+  expectWho(ambiguous, 'jenn');
   assert.equal(ambiguous.me.coordinator, undefined);
   assert.equal(JSON.stringify(ambiguous.me).includes(messy), false);
   assert.equal(JSON.stringify(ambiguous.me).includes('555'), false);
 
-  const disagree = await route({ coordinator: 'kathleen', Coordinators: 'Victor' });
-  whatsAppText(disagree.url, bases.jenn);
+  const disagree = await route({ coordinator: 'Amy', Coordinators: 'Dasha' });
+  expectWho(disagree, 'jenn');
   assert.equal(disagree.me.coordinator, undefined);
 
+  const kathleen = await route({ coordinator: 'Kathleen Rizzo' });
+  const pick = kathleen.page.sandbox.projectChooser({
+    sid: '10001', first: 'Ada', last: 'Lovelace', agency: 'AEX', season: 'Summer 2026',
+    coordinator: 'Kathleen', Coordinators: 'Kathleen Rizzo', employer: 'Secret Employer', email: 'secret@example.com'
+  });
+  assert.equal(pick.coordinator, undefined);
+  assert.equal(pick.employer, undefined);
+  assert.equal(pick.email, undefined);
+  assert.equal(JSON.stringify(pick).includes('Kathleen'), false);
+
   const decide = kathleen.page.sandbox.coordinatorFromRecord;
-  assert.equal(decide({ coordinator: 'victor' }), 'victor');
+  assert.equal(decide({ coordinator: 'Victor' }), 'victor');
+  assert.equal(decide({ Coordinators: 'Jennifer Campbell' }), 'jenn');
   assert.equal(decide({ Coordinators: 'Jennifer' }), 'jenn');
   assert.equal(decide({ Coordinators: 'Vic' }), 'jenn');
   assert.equal(decide({ Coordinators: 'Kathleen, Jenn' }), 'jenn');
-  assert.equal(decide({ Coordinators: 'Amy Jackson' }), 'amy');
-  assert.equal(decide({ coordinator: 'Dasha' }), 'dasha');
-  assert.equal(decide({ Coordinators: 'Amy Jackson and Dasha' }), 'jenn');
+  assert.equal(decide({ coordinator: 'Amy Jackson extra' }), 'jenn');
   assert.equal(decide({ coordinator: 'Amy', Coordinators: 'Dasha' }), 'jenn');
   assert.equal(decide({}), 'jenn');
 });
