@@ -77,7 +77,12 @@ async function loadPage({ endpoint, href, handler }) {
   const make = id => els[id] || (els[id] = createEl(id));
   const memory = new Map();
   const history = { url: '', replaceState(_s, _t, next) { history.url = next; } };
-  const windowObj = { location: { href }, scrollTo() {} };
+  const opened = [];
+  const windowObj = {
+    location: { href },
+    scrollTo() {},
+    open(url){ opened.push(String(url)); return { closed: false }; }
+  };
   const fetch = async (url, init) => {
     calls.push({ url: String(url), init: init || {} });
     return handler(String(url), init || {}, calls.length);
@@ -117,7 +122,7 @@ async function loadPage({ endpoint, href, handler }) {
   sandbox.document.body = els.body;
   vm.runInNewContext(source, sandbox, { filename: 'page.js' });
   await sandbox.BOOT;
-  return { sandbox, calls, els, memory, history };
+  return { sandbox, calls, els, memory, history, opened };
 }
 
 function stored(memory) {
@@ -494,6 +499,12 @@ async function identifyAs(page, record) {
   await page.sandbox.doLookup();
 }
 
+function clickMsg(page) {
+  const button = page.els.msg;
+  const listeners = (button.listeners && button.listeners.click) || [];
+  listeners.forEach(fn => fn.call(button, { preventDefault() {} }));
+}
+
 function clickAct(page, kind) {
   const button = {
     dataset: { act: kind },
@@ -640,6 +651,148 @@ test('participant-facing copy does not tell anyone to contact an agency', () => 
   const app = fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8');
   assert.equal(app.includes('Their contact details are on your job offer'), false);
   assert.equal(app.includes('Your agency contact is on your job offer'), false);
+});
+
+function whatsAppText(url, base) {
+  const u = new URL(url);
+  assert.equal(u.origin + u.pathname, base || 'https://wa.me/16099484483');
+  assert.deepEqual([...u.searchParams.keys()], ['text']);
+  return u.searchParams.get('text');
+}
+
+test('Message my CHI team opens Jenn WhatsApp on click and not on view', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('the message bar must not look anyone up'); }
+  });
+  page.sandbox.openQuestion('My visa appointment');
+  assert.equal(page.opened.length, 0);
+  assert.equal(page.calls.length, 0);
+  assert.match(page.els.msg.textContent || '', /Message my CHI team|/);
+  clickMsg(page);
+  assert.equal(page.calls.length, 0);
+  assert.equal(page.opened.length, 1);
+  const anon = whatsAppText(page.opened[0]);
+  assert.equal(anon, 'Hello, I need help from my CHI team.\nI am looking at: My visa appointment');
+  assert.equal(page.opened[0].includes('16099484483'), true);
+  assert.equal(/dob|@|token|email/i.test(anon), false);
+
+  const named = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() {
+      return jsonResponse(200, person({
+        first: 'Ada',
+        last: 'Lovelace & Co',
+        sid: '10001',
+        dob: '2001-01-04',
+        email: 'raw-secret-box@example.com',
+        emailMask: 'a••••@example.com',
+        employer: 'Hidden Employer',
+        country: 'Romania',
+        tok: 'secret-token-value'
+      }));
+    }
+  });
+  await identifyAs(named, person({ sid: '10001', dob: '2001-01-04' }));
+  named.sandbox.openQuestion('I feel unsafe or I am being harassed');
+  assert.equal(named.opened.length, 0, 'opening a tile must not open WhatsApp');
+  clickMsg(named);
+  assert.equal(named.opened.length, 1);
+  const text = whatsAppText(named.opened[0]);
+  assert.equal(text, 'Hello. I am Ada Lovelace & Co, Student ID 10001.\nI am looking at: I feel unsafe or I am being harassed');
+  assert.equal(text.includes('2001-01-04'), false);
+  assert.equal(text.includes('raw-secret-box@example.com'), false);
+  assert.equal(text.includes('secret-token-value'), false);
+  assert.equal(text.includes('Hidden Employer'), false);
+  assert.equal(text.includes('Romania'), false);
+  assert.equal(decodeURIComponent(named.opened[0].split('text=')[1]), text);
+  assert.match(named.opened[0], /^https:\/\/wa\.me\/16099484483\?text=/);
+  const callsBefore = named.calls.length;
+  clickMsg(named);
+  assert.equal(named.calls.length, callsBefore);
+});
+
+test('coordinator WhatsApp uses Kathleen, Victor, Amy, Dasha, or Jenn and does not guess', async () => {
+  const bases = {
+    kathleen: 'https://wa.me/16093503606',
+    victor: 'https://wa.me/16098922969',
+    amy: 'https://wa.me/17178805970',
+    dasha: 'https://wa.me/16465121122',
+    jenn: 'https://wa.me/16099484483'
+  };
+  async function route(extra) {
+    const page = await loadPage({
+      endpoint: 'https://lookup.test/exec',
+      href: 'https://example.test/menu/',
+      handler() {
+        return jsonResponse(200, person(Object.assign({
+          dob: '2001-01-04',
+          email: 'raw-secret-box@example.com',
+          emailMask: 'a••••@example.com'
+        }, extra)));
+      }
+    });
+    await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
+    page.sandbox.openQuestion('My visa appointment');
+    assert.equal(page.opened.length, 0);
+    clickMsg(page);
+    return { page, url: page.opened[0], me: stored(page.memory) };
+  }
+
+  const kathleen = await route({ coordinator: 'Kathleen' });
+  const kathleenText = whatsAppText(kathleen.url, bases.kathleen);
+  assert.equal(kathleenText, 'Hello. I am Ada Lovelace, Student ID 10001.\nI am looking at: My visa appointment');
+  assert.equal(kathleen.me.coordinator, 'kathleen');
+  assert.equal(JSON.stringify(kathleen.me).includes('16093503606'), false);
+
+  const victor = await route({ Coordinators: '  VICTOR  ' });
+  assert.equal(whatsAppText(victor.url, bases.victor).includes('16098922969'), false);
+  assert.equal(victor.me.coordinator, 'victor');
+  assert.equal(JSON.stringify(victor.me).includes('Coordinators'), false);
+
+  const amy = await route({ coordinator: 'Amy' });
+  whatsAppText(amy.url, bases.amy);
+  assert.equal(amy.me.coordinator, 'amy');
+  assert.equal(JSON.stringify(amy.me).includes('17178805970'), false);
+
+  const amyJackson = await route({ Coordinators: 'Amy  Jackson' });
+  whatsAppText(amyJackson.url, bases.amy);
+  assert.equal(amyJackson.me.coordinator, 'amy');
+  assert.equal(JSON.stringify(amyJackson.me).includes('Amy  Jackson'), false);
+
+  const dasha = await route({ coordinator: 'Dasha' });
+  const dashaText = whatsAppText(dasha.url, bases.dasha);
+  assert.equal(dashaText.includes('16465121122'), false);
+  assert.equal(dasha.me.coordinator, 'dasha');
+  assert.equal(dashaText.includes('2001-01-04'), false);
+
+  const fallback = await route({});
+  whatsAppText(fallback.url, bases.jenn);
+  assert.equal(fallback.me.coordinator, undefined);
+
+  const messy = 'Kathleen and Victor';
+  const ambiguous = await route({ Coordinators: messy, phone: '555' });
+  whatsAppText(ambiguous.url, bases.jenn);
+  assert.equal(ambiguous.me.coordinator, undefined);
+  assert.equal(JSON.stringify(ambiguous.me).includes(messy), false);
+  assert.equal(JSON.stringify(ambiguous.me).includes('555'), false);
+
+  const disagree = await route({ coordinator: 'kathleen', Coordinators: 'Victor' });
+  whatsAppText(disagree.url, bases.jenn);
+  assert.equal(disagree.me.coordinator, undefined);
+
+  const decide = kathleen.page.sandbox.coordinatorFromRecord;
+  assert.equal(decide({ coordinator: 'victor' }), 'victor');
+  assert.equal(decide({ Coordinators: 'Jennifer' }), 'jenn');
+  assert.equal(decide({ Coordinators: 'Vic' }), 'jenn');
+  assert.equal(decide({ Coordinators: 'Kathleen, Jenn' }), 'jenn');
+  assert.equal(decide({ Coordinators: 'Amy Jackson' }), 'amy');
+  assert.equal(decide({ coordinator: 'Dasha' }), 'dasha');
+  assert.equal(decide({ Coordinators: 'Amy Jackson and Dasha' }), 'jenn');
+  assert.equal(decide({ coordinator: 'Amy', Coordinators: 'Dasha' }), 'jenn');
+  assert.equal(decide({}), 'jenn');
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {

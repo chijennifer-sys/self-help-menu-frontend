@@ -174,6 +174,8 @@ function adaptFull(raw){
   if(birthCountry) out.birthCountry = birthCountry;
   const office = asText(raw.agencyOfficeCode) || asText(raw['Agency Office Code']);
   if(office) out.agencyOfficeCode = office;
+  const coordinator = coordinatorFromRecord(raw);
+  if(coordinator === 'kathleen' || coordinator === 'victor' || coordinator === 'amy' || coordinator === 'dasha') out.coordinator = coordinator;
   if(asText(raw.emailMask)) out.emailMask = safeEmailMask(raw.emailMask);
   else if(asText(raw.email) && String(raw.email).indexOf('@') > 0) out.emailMask = maskEmail(raw.email);
   return out.name || out.sid ? out : null;
@@ -842,8 +844,71 @@ sIn.addEventListener('input', () => {
 });
 sClear.addEventListener('click', () => { sIn.value=''; state.q=''; sClear.hidden=true; sIn.focus(); render(); });
 
-document.getElementById('msg').addEventListener('click', function(){
-  this.innerHTML = '<span>Your CHI team has this, you will hear back within one working day</span>';
+/* Public WhatsApp destinations, approved by name. Jenn is the fallback.
+   A click opens a draft only. WhatsApp does not send until the participant taps Send.
+   Another coordinator is used only when the record's key is exactly that one name. */
+const CHI_WHATSAPP = {
+  jenn: 'https://wa.me/16099484483',
+  kathleen: 'https://wa.me/16093503606',
+  victor: 'https://wa.me/16098922969',
+  amy: 'https://wa.me/17178805970',
+  dasha: 'https://wa.me/16465121122'
+};
+
+function coordinatorKey(value){
+  const s = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if(s === 'kathleen') return 'kathleen';
+  if(s === 'victor') return 'victor';
+  if(s === 'amy' || s === 'amy jackson') return 'amy';
+  if(s === 'dasha') return 'dasha';
+  if(s === 'jenn' || s === 'jennifer') return 'jenn';
+  return '';
+}
+
+/* coordinator is the minimal key. Coordinators is the roster header.
+   A blank field is ignored. A field that is not exactly one approved name,
+   or two fields that disagree, falls back to Jenn. */
+function coordinatorFromRecord(raw){
+  if(!raw || typeof raw !== 'object') return 'jenn';
+  const present = [];
+  ['coordinator', 'Coordinators'].forEach(key => {
+    if(raw[key] === undefined || raw[key] === null) return;
+    if(String(raw[key]).trim() === '') return;
+    present.push(coordinatorKey(raw[key]));
+  });
+  if(!present.length) return 'jenn';
+  if(present.some(key => !key)) return 'jenn';
+  const unique = present.filter((key, i) => present.indexOf(key) === i);
+  if(unique.length !== 1) return 'jenn';
+  return unique[0];
+}
+
+function chiWhatsAppBase(){
+  const key = ME && ME.coordinator;
+  return (key && CHI_WHATSAPP[key]) || CHI_WHATSAPP.jenn;
+}
+
+function chiWhatsAppUrl(){
+  let greeting = 'Hello, I need help from my CHI team.';
+  if(ME){
+    const bits = [];
+    const name = asText(ME.name);
+    const sid = asText(ME.sid);
+    if(name) bits.push('I am ' + name);
+    if(sid) bits.push('Student ID ' + sid);
+    if(bits.length) greeting = 'Hello. ' + bits.join(', ') + '.';
+  }
+  let text = greeting;
+  if(state.leaf !== null && T[state.leaf] && T[state.leaf].q){
+    text += '\nI am looking at: ' + T[state.leaf].q;
+  }
+  return chiWhatsAppBase() + '?text=' + encodeURIComponent(text);
+}
+
+document.getElementById('msg').addEventListener('click', function(e){
+  if(e && e.preventDefault) e.preventDefault();
+  const url = chiWhatsAppUrl();
+  if(window.open) window.open(url, '_blank', 'noopener,noreferrer');
 });
 document.getElementById('portal').addEventListener('click', () => {
   const i = T.findIndex(t => t.q === 'I cannot get into my CHI portal');
