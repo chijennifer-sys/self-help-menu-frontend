@@ -557,7 +557,7 @@ test('My visa appointment uses Birth Country, the agency name, and the start dat
   assert.match(tile, /captures:'Nothing'/);
   assert.match(tile, /notify:'Nobody'/);
   assert.match(tile, /log:'Page view only'/);
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
 
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -578,7 +578,8 @@ test('My visa appointment uses Birth Country, the agency name, and the start dat
   assert.equal(page.sandbox.openQuestion('My visa appointment'), true);
   const html = page.els.view.innerHTML;
   const me = stored(page.memory);
-  assert.match(html, /You are coming through <b>American Experience<\/b> in <b>Romania<\/b>\. They book your appointment, not CHI\./);
+  assert.match(html, /You are in <b>Romania<\/b>\. Message my CHI team about your visa\. That opens an email to your coordinator\./);
+  assert.equal(/agency/i.test(html), false);
   assert.match(html, new RegExp('start date, <b>' + me.dsStartF.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '</b>'));
   assert.equal(html.includes('AEX'), false);
   assert.equal(html.includes('raw-secret-box@example.com'), false);
@@ -609,8 +610,8 @@ test('My visa appointment uses Birth Country, the agency name, and the start dat
   await identifyAs(byOffice, person({}));
   byOffice.sandbox.openQuestion('My visa appointment');
   const officeHtml = byOffice.els.view.innerHTML;
-  assert.match(officeHtml, /Experience Work and Travel Doo/);
   assert.match(officeHtml, /Bosnia and Herzegovina/);
+  assert.equal(/Experience Work and Travel|agency/i.test(officeHtml), false);
   assert.equal(officeHtml.includes('EXPB'), false);
   assert.deepEqual(fs.readFileSync(configFile), configBefore);
 });
@@ -626,13 +627,14 @@ test('My visa appointment omits a missing country, agency name, or start date', 
   await identifyAs(page, person({}));
   page.sandbox.openQuestion('My visa appointment');
   const html = page.els.view.innerHTML;
-  assert.match(html, /Your agency at home books your embassy appointment\. CHI does not book it\./);
+  assert.match(html, /CHI does not book the embassy appointment/);
+  assert.equal(/agency/i.test(html), false);
   assert.match(html, /Is your appointment after your start date\? CHI can write a letter to move your dates\./);
   assert.equal(/ask your agency|tell your agency|message my agency/i.test(html), false);
   assert.equal(html.includes('{'), false);
   assert.equal(html.includes('ZZZZ'), false);
   assert.equal(html.includes('Hidden Employer'), false);
-  assert.equal(html.includes('Your programme'), false);
+  assert.match(html, /email to your coordinator/);
 
   const countryOnly = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -644,7 +646,8 @@ test('My visa appointment omits a missing country, agency name, or start date', 
   await identifyAs(countryOnly, person({}));
   countryOnly.sandbox.openQuestion('My visa appointment');
   const countryHtml = countryOnly.els.view.innerHTML;
-  assert.match(countryHtml, /your agency in <b>Romania<\/b>/);
+  assert.match(countryHtml, /You are in <b>Romania<\/b>/);
+  assert.equal(/agency/i.test(countryHtml), false);
   assert.equal(countryHtml.includes('{agencyName}'), false);
   countryOnly.sandbox.openQuestion('Where is my DS-2019');
   const other = countryOnly.els.view.innerHTML;
@@ -956,7 +959,10 @@ test('computed dates, missing fields, hasSSN, and search', async () => {
   const expectF = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   assert.equal(me.insStartF, expectF('2026-05-25'));
   assert.equal(me.sevisDueF, expectF('2026-05-31'));
-  assert.equal(me.graceEnd, expectF('2026-10-15'));
+  assert.equal(me.graceEnd, '');
+  page.sandbox.setMe(Object.assign({}, me, { lastDayWorked: '2026-09-01' }));
+  const worked = JSON.parse(page.sandbox.localStorage.getItem('chi_me'));
+  assert.equal(worked.graceEnd, expectF('2026-10-01'));
   assert.equal(me.ssnBy, expectF('2026-08-01'));
   assert.equal(me.sevisBy, me.sevisDueF);
   page.sandbox.openQuestion('How do I apply for my Social Security Number');
@@ -968,7 +974,7 @@ test('computed dates, missing fields, hasSSN, and search', async () => {
 
   page.sandbox.setMe({ sid: '10001', name: 'Ada', first: 'Ada', agency: 'ZZZZ', agencyName: 'ZZZZ' });
   const titles = [...fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8').matchAll(/\bq:'([^']+)'/g)].map(m => m[1]);
-  assert.equal(titles.length, 67);
+  assert.equal(titles.length, 71);
   titles.forEach(q => {
     page.sandbox.openQuestion(q);
     const html = page.els.view.innerHTML;
@@ -999,7 +1005,7 @@ test('computed dates, missing fields, hasSSN, and search', async () => {
   page.els.s.value = 'workers comp';
   page.els.s.listeners.input.forEach(fn => fn());
   assert.match(page.els.view.innerHTML, /second job|accident|employer/i);
-  assert.equal(titles.length, 67);
+  assert.equal(titles.length, 71);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
@@ -1029,7 +1035,7 @@ test('training deck facts stay on the existing tiles', async () => {
     assert.match(window, /^1-800-432-4643, ext\. 0/);
     assert.match(window, /24\/7/);
   });
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
 
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -1109,7 +1115,7 @@ test('training deck facts stay on the existing tiles', async () => {
 
 test('email guidance stays on the existing tiles', async () => {
   const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
   assert.equal(src.includes('MyProfile'), false);
   assert.equal(src.includes('docs.google.com'), false);
   assert.equal(/ask your agency|contact your agency|message your agency/i.test(src), false);
@@ -1233,4 +1239,102 @@ test('orientation schedule converts Peru, hides a past week, and falls back when
   page.sandbox.openQuestion('When is the next online orientation');
   assert.match(page.els.view.innerHTML, /10:00 AM New York time/);
   assert.equal(page.els.view.innerHTML.includes('in Mexico'), false);
+});
+
+test('participant-facing tile text does not say agency', () => {
+  const vm = require('node:vm');
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  const sandbox = { globalThis: null };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(src + '\nglobalThis.__T=T;', sandbox);
+  const hits = [];
+  sandbox.__T.forEach(t => {
+    const bits = [t.q, t.sub, t.you, t.youYes, t.youNo, t.lead];
+    (t.body || []).forEach(p => bits.push(p));
+    (t.need || []).forEach(p => bits.push(p));
+    if (t.act) bits.push(t.act.label);
+    if (t.clock) bits.push(t.clock.l, t.clock.t);
+    if (t.sample) (t.sample.lines || []).forEach(l => bits.push(l));
+    bits.forEach(s => {
+      if (s && /\bagency\b/i.test(String(s))) hits.push(t.q + ': ' + s);
+    });
+  });
+  assert.deepEqual(hits, []);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
+});
+
+test('My next steps shows, hides, and skips missing fields', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('next steps must not look anyone up'); }
+  });
+  const day = '2026-11-09T12:00:00Z';
+  page.sandbox.setNextStepsNow(day);
+  function card(record){
+    page.sandbox.setMe(record);
+    page.sandbox.state = page.sandbox.state;
+    const view = page.els.view;
+    page.sandbox.render();
+    return view.innerHTML;
+  }
+  const base = {
+    sid: '10001', first: 'Ada', employer: 'Aramark', location: 'Ocean City, NJ',
+    dsStart: '2026-11-20', dsEnd: '2026-12-20', arrival: '2026-10-20',
+    hasSSN: 'No', sevisStatus: 'Initial', housingStatus: 'Pending'
+  };
+  let html = card(base);
+  assert.match(html, /My next steps/);
+  assert.match(html, /Validate your SEVIS record by/);
+  assert.match(html, /Plan your last day/);
+  assert.match(html, /Verify your housing/);
+  assert.equal(html.includes('Plan your last paycheck'), false);
+  assert.equal((html.match(/class="nextitem"/g) || []).length, 3);
+
+  html = card(Object.assign({}, base, { sevisStatus: 'Validated', housingStatus: 'Approved', dsEnd: '2027-06-01', hasSSN: 'Yes', arrival: '2026-06-01' }));
+  assert.equal(html.includes('My next steps'), false);
+
+  html = card(Object.assign({}, base, { housingStatus: '' , sevisStatus: '', dsEnd: '', dsStart: '', arrival: '2026-10-20', hasSSN: 'No' }));
+  assert.match(html, /Social Security Number is not on file/);
+  assert.equal(html.includes('Validate your SEVIS'), false);
+  assert.equal(html.includes('Verify your housing'), false);
+  assert.equal(html.includes('Plan your last day'), false);
+
+  html = card({ sid: '10001', arrival: '2026-11-09', dsStart: '2026-11-09', sevisStatus: 'Active', hasSSN: 'Yes', housingStatus: 'Verified' });
+  assert.match(html, /first 2 weeks/);
+  assert.match(html, /Finish your employer onboarding/);
+  assert.match(html, /Save your insurance card/);
+
+  html = card({ sid: '10001', arrival: '2026-10-10', hasSSN: 'Yes', sevisStatus: 'Active', housingStatus: 'Verified', dsEnd: '2026-11-20' });
+  assert.match(html, /Plan your last paycheck/);
+  assert.match(html, /contact your employer directly/);
+  assert.match(html, /Do not mail it to CHI/);
+
+  html = card({ sid: '10001', arrival: '2026-10-10', hasSSN: 'Yes', sevisStatus: 'Active', housingStatus: 'Verified' });
+  assert.match(html, /Never stop going to work/);
+
+  html = card({ sid: '10001', lastDayWorked: '2026-11-01', dsEnd: '2026-12-20', hasSSN: 'Yes', housingStatus: 'Verified', sevisStatus: 'Validated' });
+  assert.match(html, /grace period started on your last day of work/);
+  assert.match(html, /cannot work now/);
+
+  html = card({ sid: '10001', dsEnd: '2026-11-20', hasSSN: 'Yes', housingStatus: 'Verified', sevisStatus: 'Validated' });
+  assert.equal(html.includes('grace period started'), false);
+
+  page.sandbox.setMe(base);
+  page.sandbox.render();
+  const button = { dataset: { q: 'How do I validate my SEVIS record' }, closest(sel){ return sel === '[data-q]' ? button : null; } };
+  const listeners = (page.els.document.listeners && page.els.document.listeners.click) || [];
+  listeners.forEach(fn => fn({ target: { closest(sel){ return button.closest(sel); } } }));
+  assert.match(page.els.view.innerHTML, /How do I validate my SEVIS record/);
+
+  function search(word, title){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    assert.equal(page.els.view.innerHTML.includes('Nothing matches'), false, word);
+    assert.match(page.els.view.innerHTML, title);
+  }
+  search('when do i start', /When do I start working/);
+  search('find housing', /Help me find housing/);
+  search('change department', /Can I change my position or department/);
+  search('forgot evaluation', /My monthly evaluation/);
 });
