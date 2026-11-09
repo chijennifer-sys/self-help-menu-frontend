@@ -95,6 +95,7 @@ async function loadPage({ endpoint, href, handler }) {
   const source = [
     fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8'),
     config,
+    fs.readFileSync(path.join(ROOT, 'assets', 'office-holidays.js'), 'utf8'),
     fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8')
   ].join('\n');
   const sandbox = {
@@ -898,6 +899,39 @@ test('WhatsApp button follows Eastern office hours', async () => {
   assert.match(page.els.view.innerHTML, /call or text 988/);
   assert.equal(page.els.whatsapp.hidden, true);
   assert.equal(page.els.whatsappnote.hidden, false);
+});
+
+test('CHI office holidays hide WhatsApp for the Eastern date', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a holiday must not look anyone up'); }
+  });
+  const open = page.sandbox.whatsAppOpen;
+  const list = fs.readFileSync(path.join(ROOT, 'assets', 'office-holidays.js'), 'utf8');
+  assert.match(list, /2026-11-11/);
+  assert.match(list, /Veterans Day/);
+  assert.match(list, /2027-11-01/);
+  assert.match(list, /CHI Founders' Day/);
+  function show(iso){
+    page.sandbox.refreshWhatsApp(iso);
+    return { button: page.els.whatsapp.hidden, line: page.els.whatsappnote.hidden, mail: page.els.msg.hidden };
+  }
+  assert.deepEqual(show('2026-11-10T15:00:00Z'), { button: false, line: true, mail: false });
+  assert.deepEqual(show('2026-11-11T15:00:00Z'), { button: true, line: false, mail: false });
+  assert.deepEqual(show('2026-11-12T15:00:00Z'), { button: false, line: true, mail: false });
+  assert.equal(open('2026-11-11T15:00:00Z'), false);
+  assert.equal(open('2026-11-10T15:00:00Z'), true);
+  page.sandbox.setOfficeNow('2026-11-11T15:00:00Z');
+  page.opened.length = 0;
+  clickWhatsApp(page);
+  assert.equal(page.opened.length, 0);
+  clickMsg(page);
+  assert.equal(parseMailto(page.mails[page.mails.length - 1]).to, 'chijennifer@chinet.org');
+  const note = page.els.whatsappnote.textContent || '';
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /WhatsApp is available Monday to Friday, 9am to 5pm Eastern\./);
+  assert.equal(note.includes('911'), false);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {

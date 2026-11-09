@@ -975,7 +975,13 @@ document.getElementById('msg').addEventListener('click', function(e){
   openMailDraft(chiMailUrl());
 });
 /* Office clock is America/New_York, including daylight saving. The WhatsApp
-   button is Monday to Friday, 9:00:00 through 16:59:59. No holiday list. */
+   button is Monday to Friday, 9:00:00 through 16:59:59, except OFFICE_HOLIDAYS. */
+const OFFICE_HOLIDAY_DATES = {};
+if(typeof OFFICE_HOLIDAYS !== 'undefined'){
+  OFFICE_HOLIDAYS.forEach(item => {
+    if(item && item.date) OFFICE_HOLIDAY_DATES[item.date] = 1;
+  });
+}
 let officeNow = null;
 function setOfficeNow(value){
   officeNow = value ? new Date(value) : null;
@@ -1002,6 +1008,8 @@ function whatsAppOpen(now){
   if(hour === 24) hour = 0;
   const minute = Number(bag.minute), second = Number(bag.second);
   const weekday = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+  const easternDate = String(y) + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  if(OFFICE_HOLIDAY_DATES[easternDate]) return false;
   if(weekday === 0 || weekday === 6) return false;
   const secs = hour * 3600 + minute * 60 + second;
   return secs >= 9 * 3600 && secs < 17 * 3600;
