@@ -1538,7 +1538,12 @@ test('guided emails use the staff subject and do not send themselves', async () 
       let value = 'A short note';
       if(field.type === 'choice' || field.type === 'checks') value = field.options[0];
       else if(field.type === 'time') value = '15:00';
-      else if(field.type === 'date') value = field.max === 'dsEndPlus30' ? '2026-10-15' : '2026-07-01';
+      else if(field.type === 'date'){
+        if(field.max === 'dsEndPlus30') value = '2026-10-15';
+        else if(field.notPast) value = '2026-12-01';
+        else if(field.usReturn && field.after) value = '2026-12-10';
+        else value = '2026-07-01';
+      }
       page.sandbox.setAskAnswer(field.id, value);
     });
   }
@@ -1608,20 +1613,32 @@ test('guided emails use the staff subject and do not send themselves', async () 
   assert.ok(attachAt > 0 && attachAt < sendAt);
   assert.match(html, /What does Entries say on your visa/);
   page.sandbox.setAskAnswer('back', '2026-09-15');
-  page.sandbox.setAskAnswer('leave', '2026-07-01');
+  page.sandbox.setAskAnswer('leave', '2026-12-01');
   page.sandbox.setAskAnswer('dest', 'Mexico City, Mexico');
   page.sandbox.setAskAnswer('bossYes', 'Yes');
   page.sandbox.setAskAnswer('scan', 'Yes');
   page.sandbox.setAskAnswer('email', 'ada@example.com');
   page.sandbox.setAskAnswer('whatsapp', '+1 555 0100');
   page.sandbox.setAskAnswer('entries', 'Multiple (M)');
-  assert.match(page.els.view.innerHTML, /before your program end date/);
+  assert.match(page.els.view.innerHTML, /max="2026-09-14"/);
+  assert.match(page.els.view.innerHTML, /You cannot come back into the U\.S\. after your program ends on September 15, 2026/);
+  assert.match(page.els.view.innerHTML, /class="askwarn"/);
   assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setMe(Object.assign({}, record, { dsEnd: '2027-03-15' }));
+  page.sandbox.openQuestion('Can I travel inside or outside the United States');
+  page.sandbox.setAskAnswer('back', '2026-12-01');
+  page.sandbox.setAskAnswer('leave', '2026-12-01');
+  page.sandbox.setAskAnswer('dest', 'Mexico City, Mexico');
   page.sandbox.setAskAnswer('bossYes', 'No');
-  page.sandbox.setAskAnswer('back', '2026-07-10');
+  page.sandbox.setAskAnswer('scan', 'Yes');
+  page.sandbox.setAskAnswer('email', 'ada@example.com');
+  page.sandbox.setAskAnswer('whatsapp', '+1 555 0100');
+  page.sandbox.setAskAnswer('entries', 'Multiple (M)');
   assert.equal(page.sandbox.openAskMail(), false);
   assert.match(page.els.view.innerHTML, /Ask your manager first/);
+  assert.match(page.els.view.innerHTML, /Your return date must be after the day you leave/);
   page.sandbox.setAskAnswer('bossYes', 'Yes');
+  page.sandbox.setAskAnswer('back', '2026-12-10');
   page.sandbox.setAskAnswer('__urgent', 'Yes');
   assert.equal(page.sandbox.openAskMail(), true);
   mail = mailOf();
@@ -1634,11 +1651,11 @@ test('guided emails use the staff subject and do not send themselves', async () 
     'Full name: Ada Lovelace',
     'Student Program ID: 10001',
     'Employer: Aramark',
-    'Program dates: June 1, 2026 to September 15, 2026',
+    'Program dates: June 1, 2026 to March 15, 2027',
     'Visa type: J-1, Entries Multiple (M)',
     'Travel destination: Mexico City, Mexico',
-    'Departure date from the United States: July 1, 2026',
-    'Return date to the United States: July 10, 2026',
+    'Departure date from the United States: December 1, 2026',
+    'Return date to the United States: December 10, 2026',
     'My employer has approved this time off. A clear scan of my DS-2019 is attached. Please sign it and send it back before my departure date.',
     'Thank you,',
     'ada@example.com',
@@ -1653,11 +1670,11 @@ test('guided emails use the staff subject and do not send themselves', async () 
   assert.equal(mail.body.includes('Programme dates'), false);
   assert.equal(/2001-01-04|secret-token-value|\bAEX\b|agency|chikathleenr@chinet.org/i.test(mail.body), false);
 
-  page.sandbox.setMe(Object.assign({}, record, { visaEntries: 'M' }));
+  page.sandbox.setMe(Object.assign({}, record, { visaEntries: 'M', dsEnd: '2027-03-15' }));
   page.sandbox.openQuestion('Can I travel inside or outside the United States');
   assert.equal(page.els.view.innerHTML.includes('What does Entries say on your visa'), false);
-  page.sandbox.setAskAnswer('back', '2026-07-10');
-  page.sandbox.setAskAnswer('leave', '2026-07-01');
+  page.sandbox.setAskAnswer('back', '2026-12-10');
+  page.sandbox.setAskAnswer('leave', '2026-12-01');
   page.sandbox.setAskAnswer('dest', 'Mexico City, Mexico');
   page.sandbox.setAskAnswer('bossYes', 'Yes');
   page.sandbox.setAskAnswer('scan', 'Yes');
@@ -1683,6 +1700,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
       const banned = /date of birth|password|social security|card number|passport number|\bSSN\b/i;
       assert.equal(banned.test(field.label), false, q + ' ' + field.label);
     });
+    page.sandbox.setMe(spec.layout === 'travel' ? Object.assign({}, record, { dsEnd: '2027-03-15' }) : record);
     page.sandbox.openQuestion(q);
     fill(spec);
     page.sandbox.setAskAnswer('__urgent', 'No');
@@ -1696,7 +1714,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
     if(spec.layout === 'travel'){
       assert.equal(mail.subject, 'Travel Signature Request, Ada Lovelace, SID 10001', q);
       assert.match(mail.body, /Hello CHI Team,/, q);
-      assert.match(mail.body, /Program dates: June 1, 2026 to September 15, 2026/, q);
+      assert.match(mail.body, /Program dates: June 1, 2026 to March 15, 2027/, q);
     }else{
       assert.equal(mail.subject, spec.topic + ' | Summer 2026 | 10001 | Ada Lovelace', q);
       assert.match(mail.body, /Participant Name: Ada Lovelace/, q);
@@ -2129,4 +2147,133 @@ test('staff emails lead with the decision facts and phases pick six tiles', asyn
   assert.match(open, /Request a travel signature 2 weeks ahead/);
   assert.equal(open.includes('Aramark'), false);
   assert.match(open, /This answer is different for every person/);
+});
+
+test('every tile slug opens after login and a bad slug opens the menu', async () => {
+  const probe = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('slug probe must not look anyone up'); }
+  });
+  const entries = Object.entries(probe.sandbox.TILE_SLUGS);
+  assert.equal(entries.length, 72);
+  for (const [title, slug] of entries) {
+    const page = await loadPage({
+      endpoint: 'https://lookup.test/exec',
+      href: 'https://example.test/menu/?tile=' + encodeURIComponent(slug) + '&sid=10001&dob=2001-01-04',
+      handler() { throw new Error('a tile link must not look anyone up'); }
+    });
+    const locked = page.els.view.innerHTML;
+    const titleRe = new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    assert.match(locked, titleRe, slug);
+    assert.match(locked, /date of birth/i, slug);
+    assert.equal(locked.includes('Aramark'), false, slug);
+    assert.equal(page.history.url.includes('sid='), false, slug);
+    assert.equal(page.history.url.includes('2001-01-04'), false, slug);
+    assert.match(page.history.url, new RegExp('tile=' + slug));
+    page.sandbox.setMe({
+      sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+      employer: 'Aramark', dsStart: '2026-06-01', dsEnd: '2026-09-15'
+    });
+    page.sandbox.render();
+    const open = page.els.view.innerHTML;
+    assert.match(open, titleRe, slug + ' after login');
+    assert.equal(open.includes('This answer is different for every person'), false, slug);
+  }
+  const bad = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/?tile=not-a-real-tile',
+    handler() { throw new Error('a bad slug must not look anyone up'); }
+  });
+  assert.match(bad.els.view.innerHTML, /Where are you now/);
+  assert.equal(bad.els.view.innerHTML.includes('Copy link to this tile'), false);
+  assert.equal(new URL(bad.history.url, 'https://example.test').searchParams.get('tile'), null);
+});
+
+test('fifteen student journeys land on a concrete next step', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a journey must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    employer: 'Aramark', location: 'Ocean City, NJ', season: 'Summer 2026',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', country: 'Peru'
+  });
+  const journeys = [
+    ['I lost my passport or another document', /1-800-432-4643, ext\. 0/],
+    ['I was in an accident', /1-855-731-9445/],
+    ['I am not getting enough hours', /Three short weeks or more/],
+    ['I want to go home early', /tally\.so\/r\/pbLbZP/],
+    ['Can I travel inside or outside the United States', /Request a travel signature 2 weeks ahead/],
+    ['My Social Security card has not come', /CHI does not receive the card/],
+    ['My housing when I land', /Call 911/],
+    ['I am sick or I am hurt', /CHI cannot file the claim/],
+    ['How do I get a second job approved', /written CHI approval/],
+    ['Where do I enter my visa results', /Do not book a flight until the visa is in your passport/],
+    ['How do I get my final paycheck', /There is no CHI address/],
+    ['How do I claim my tax overages back', /CHI does not forward mail/],
+    ['I am struggling or homesick', /988/],
+    ['Where do I go on my first day', /Do not go home and wait/],
+    ['How do I extend my insurance for my travel period', /50 dollars/]
+  ];
+  assert.equal(journeys.length, 15);
+  journeys.forEach(([q, re]) => {
+    page.sandbox.openQuestion(q);
+    assert.match(page.els.view.innerHTML, re, q);
+    assert.equal(/West End|Anchorage Court|San Rafael/i.test(page.els.view.innerHTML), false, q);
+  });
+  page.sandbox.openQuestion('How do I get a second job approved');
+  assert.equal(/72 hours|about a week/i.test(page.els.view.innerHTML), false);
+});
+
+test('a U.S. return date must be before the DS end and after departure', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a date check must not look anyone up'); }
+  });
+  const base = {
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    employer: 'Aramark', season: 'Summer 2026', dsStart: '2026-06-01'
+  };
+  function openTravel(extra){
+    page.sandbox.setMe(Object.assign({}, base, extra));
+    page.sandbox.openQuestion('Can I travel inside or outside the United States');
+    page.sandbox.setAskAnswer('dest', 'Toronto, Canada');
+    page.sandbox.setAskAnswer('bossYes', 'Yes');
+    page.sandbox.setAskAnswer('scan', 'Yes');
+    page.sandbox.setAskAnswer('email', 'ada@example.com');
+    page.sandbox.setAskAnswer('whatsapp', '+1 555 0100');
+    page.sandbox.setAskAnswer('entries', 'Multiple (M)');
+  }
+  openTravel({ dsEnd: '2027-03-15' });
+  assert.match(page.els.view.innerHTML, /max="2027-03-14"/);
+  page.sandbox.setAskAnswer('leave', '2026-12-01');
+  page.sandbox.setAskAnswer('back', '2027-03-14');
+  assert.equal(page.els.view.innerHTML.includes('You cannot come back into the U.S.'), false);
+  assert.equal(page.sandbox.openAskMail(), true);
+  page.sandbox.setAskAnswer('back', '2027-03-15');
+  assert.match(page.els.view.innerHTML, /program ends on March 15, 2027/);
+  assert.match(page.els.view.innerHTML, /You will not be allowed back into the country/);
+  assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setAskAnswer('back', '2027-03-16');
+  assert.match(page.els.view.innerHTML, /Pick a date before March 15, 2027/);
+  assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setAskAnswer('back', '2026-12-01');
+  assert.match(page.els.view.innerHTML, /after the day you leave/);
+  assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setAskAnswer('leave', '2026-11-01');
+  page.sandbox.setAskAnswer('back', '2026-12-10');
+  assert.match(page.els.view.innerHTML, /That date is in the past/);
+  assert.equal(page.sandbox.openAskMail(), false);
+  openTravel({});
+  page.sandbox.setAskAnswer('leave', '2026-12-01');
+  page.sandbox.setAskAnswer('back', '2026-12-10');
+  assert.match(page.els.view.innerHTML, /Your return date must be before your program end date on your DS-2019/);
+  page.sandbox.openQuestion('Where do I enter my flight details');
+  const flight = page.sandbox.ASK_FORMS['Where do I enter my flight details'].fields.find(f => f.id === 'when');
+  assert.equal(flight.usReturn, true);
+  assert.equal(flight.max, 'dayBeforeDsEnd');
 });

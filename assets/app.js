@@ -672,7 +672,7 @@ function renderHome(){
       }).join('')}
     </div>
     <div class="brandmark">
-      <img src="assets/chi-logo.png"
+      <img src="assets/chi-logo.png" loading="lazy" decoding="async"
            alt="Cultural Homestay International, since 1980" width="72" height="72">
       <span>Cultural exchange programs since 1980</span>
     </div>`;
@@ -703,12 +703,12 @@ function renderStage(){
     : `<div class="crumb"><button data-go="home">${back} All stages</button></div>`;
   let lead = `<p>${esc(s.d)}</p>`;
   if(ME && s.key === 'life'){
-    lead = `<p>These come up at any point in your programme, not at one particular time.</p>`;
+    lead = `<p>These come up at any point in your program, not at one particular time.</p>`;
   } else if(ME && ME.stage === s.key){
     const where =
       ME.day === null ? ''
       : ME.day < 0 ? `You start in ${Math.abs(ME.day)} days.`
-      : ME.daysLeft < 0 ? `Your programme ended ${Math.abs(ME.daysLeft)} days ago.`
+      : ME.daysLeft < 0 ? `Your program ended ${Math.abs(ME.daysLeft)} days ago.`
       : ME.daysLeft <= 14 ? `You are on day ${ME.day} of ${ME.len}, with ${ME.daysLeft} to go.`
       : `You are on day ${ME.day} of ${ME.len}.`;
     lead = `<p>${where} These are the questions people ask at this point.</p>`;
@@ -1152,8 +1152,8 @@ addAsk(['Can I travel inside or outside the United States', 'Can I travel before
   attachLine:'Attach: a clear full page scan of your DS-2019',
   fields:[
     {id:'dest', mail:'Travel destination', label:'Which country and city are you going to?', type:'text', required:true},
-    {id:'leave', mail:'Departure date from the United States', label:'What date do you leave the United States?', type:'date', required:true},
-    {id:'back', mail:'Return date to the United States', label:'What date do you come back to the United States?', type:'date', required:true, max:'dayBeforeDsEnd'},
+    {id:'leave', mail:'Departure date from the United States', label:'What date do you leave the United States?', type:'date', required:true, notPast:true},
+    {id:'back', mail:'Return date to the United States', label:'What date do you come back to the United States?', type:'date', required:true, max:'dayBeforeDsEnd', usReturn:true, after:'leave'},
     {id:'bossYes', mail:'Employer approved this time off', label:'Did your employer approve this time off?', type:'choice', required:true, options:['Yes', 'No'], must:'Yes', deny:'Ask your manager first.'},
     {id:'scan', mail:'DS-2019 scan attached', label:'The DS-2019 scan is attached', type:'checks', required:true, options:['Yes']},
     {id:'email', mail:'Email', label:'What email should CHI use to send it back?', type:'text', required:true},
@@ -1328,7 +1328,7 @@ addAsk(['Where do I enter my flight details'], {
   topic:'Flight change', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'What changed', label:'What changed?', type:'choice', required:true, options:['New flight', 'Late landing', 'No flight yet']},
-    {id:'when', mail:'Arrival date', label:'What is the arrival date?', type:'date', required:true},
+    {id:'when', mail:'Arrival date', label:'What is the arrival date?', type:'date', required:true, max:'dayBeforeDsEnd', usReturn:true},
     {id:'flight', mail:'Flight number', label:'What is the flight number?', type:'text', required:true},
     {id:'landTime', mail:'Landing time', label:'What time do you land?', type:'time', required:true}
   ]
@@ -1405,6 +1405,11 @@ function fieldValueAsk(t, field){
 function fieldLimit(field, edge){
   return field[edge] ? boundDate(field[edge]) : '';
 }
+function usReturnWarning(endIso){
+  const shown = longDate(endIso);
+  return 'You cannot come back into the U.S. after your program ends on ' + shown + '. You will not be allowed back into the country. Pick a date before ' + shown + '.';
+}
+const MISSING_END_WARNING = 'Your return date must be before your program end date on your DS-2019.';
 function fieldError(t, field){
   if(!fieldShown(t, field)) return '';
   const value = fieldValueAsk(t, field);
@@ -1412,14 +1417,27 @@ function fieldError(t, field){
   if(field.required && !asText(value)) return 'Required';
   if(field.must && asText(value) && value !== field.must) return field.deny || 'Ask your manager first.';
   if(field.type === 'date' && value && /^\d{4}-\d{2}-\d{2}$/.test(value)){
+    if(field.notPast && value < todayIso()) return 'That date is in the past. Pick today or a later date.';
+    if(field.usReturn){
+      const end = rosterIso('dsEnd');
+      if(end && value >= end) return usReturnWarning(end);
+    }
+    if(field.after){
+      const other = fieldValueAsk(t, {id:field.after});
+      if(/^\d{4}-\d{2}-\d{2}$/.test(other) && value <= other) return 'Your return date must be after the day you leave. Pick a later date.';
+    }
     const min = fieldLimit(field, 'min');
     const max = fieldLimit(field, 'max');
     if(min && value < min) return 'Pick a later date';
-    if(max && value > max){
-      if(field.max === 'dayBeforeDsEnd') return 'Your return date must be before your program end date';
-      return 'That date is more than 30 days after your program end date';
-    }
+    if(max && value > max) return 'That date is more than 30 days after your program end date';
   }
+  return '';
+}
+function dateNotice(t, field){
+  if(!field) return '';
+  const err = fieldError(t, field);
+  if((field.usReturn || field.notPast) && err && err !== 'Required') return err;
+  if(field.usReturn && !rosterIso('dsEnd')) return MISSING_END_WARNING;
   return '';
 }
 function askReady(t, spec){
@@ -1567,7 +1585,10 @@ function askHtml(t){
     const value = fieldValueAsk(t, field);
     const req = field.required ? ' <span class="req">Required</span>' : '';
     const err = fieldError(t, field);
-    const errHtml = err && err !== 'Required' ? '<span class="askerr">' + esc(err) + '</span>' : '';
+    const notice = dateNotice(t, field);
+    const errHtml = notice
+      ? '<p class="askwarn" role="alert"><strong>Warning</strong> ' + esc(notice) + '</p>'
+      : (err && err !== 'Required' ? '<span class="askerr">' + esc(err) + '</span>' : '');
     if(field.type === 'choice'){
       const buttons = field.options.map(opt => {
         const on = value === opt ? ' aria-pressed="true"' : ' aria-pressed="false"';
@@ -1708,7 +1729,7 @@ function renderLeaf(){
         ${tileLinkButton(t)}
       </div>
       <div class="leaf-b">
-        ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
+        ${youHtml ? `<div class="you"><span class="yl">Your program</span>${youHtml}</div>` : ''}
         <div class="screen">
           <p class="lead">${fillSmart((t.plain && t.plain.lead) || t.lead)}</p>
           ${(t.plain && t.plain.steps && t.plain.steps.length) ? `<ol class="steps">${t.plain.steps.map(step => { const text = fillSmart(step); return text ? '<li>' + text + '</li>' : ''; }).join('')}</ol>` : ''}
@@ -1794,11 +1815,11 @@ function renderWiring(){
         <dl class="wgrid">
           <dt>Input</dt><dd>One field. Digits are treated as a Student Program Id and go straight to the participant. Anything else is treated as a name. Either route ends holding a SID, and every deadline, every merge field and every prefilled form runs off that SID alone.</dd>
           <dt>Name mode</dt><dd>One name matches on first, family or preferred name. Two or more match first and family. More than 8 results is refused and asks for the Student ID, so the field cannot be used to walk the roster. Several matches show a chooser carrying only name, agency name and season. No SID, no employer, no email until the person picks themselves.</dd>
-          <dt>Worth knowing</dt><dd>A five digit SID on its own identifies a participant, and SIDs run in sequence. Anyone typing numbers in that range sees a name, an employer and programme dates. Email is never displayed. If that is more than the office wants to accept, the fix is not a second field, it is the personalised link in the drip email, which removes typing altogether and can carry a token no one can guess.</dd>
+          <dt>Worth knowing</dt><dd>A five digit SID on its own identifies a participant, and SIDs run in sequence. Anyone typing numbers in that range sees a name, an employer and program dates. Email is never displayed. If that is more than the office wants to accept, the fix is not a second field, it is the personalised link in the drip email, which removes typing altogether and can carry a token no one can guess.</dd>
           <dt>Returns</dt><dd>One participant, not a list: <code>sid, first, last, email, agency, country, employer, location, job, dsStart, dsEnd, arrival, hasSSN</code>. Never the whole row, never anyone else.</dd>
           <dt>Agency code</dt><dd>The code comes back and stays internal. It is what routes the case, picks the main office contact and groups the reporting, and a participant never sees it. The page carries the 52 code to name pairs from the Agencies sheet and shows the name instead, so AEX reads as American Experience and EXPB as Experience Work and Travel Doo. If a new agency is added to the roster without a row in the Agencies sheet, the page falls back to the country rather than printing a code.</dd>
-          <dt>Computes</dt><dd>Day in programme, days left, SEVIS validation within 3 days of arrival, SSN deadline at end minus 45, grace period end at last day worked plus 30, and the gap between landing and the insurance start date.</dd>
-          <dt>Changes</dt><dd>The stage question disappears. The programme day is computed from the DS dates, so the page opens on the right stage instead of asking a participant to classify themselves, and the other three stages stay one tap away on a switcher. ${T.filter(t=>t.you).length} of ${T.length} tiles swap general wording for their own employer, their own dates and their own deadline. Every Tally link arrives prefilled with SID, name, employer and email.</dd>
+          <dt>Computes</dt><dd>Day in program, days left, SEVIS validation within 3 days of arrival, SSN deadline at end minus 45, grace period end at last day worked plus 30, and the gap between landing and the insurance start date.</dd>
+          <dt>Changes</dt><dd>The stage question disappears. The program day is computed from the DS dates, so the page opens on the right stage instead of asking a participant to classify themselves, and the other three stages stay one tap away on a switcher. ${T.filter(t=>t.you).length} of ${T.length} tiles swap general wording for their own employer, their own dates and their own deadline. Every Tally link arrives prefilled with SID, name, employer and email.</dd>
           <dt>Gate</dt><dd>The tiles are open, the answers are not. Anyone can browse all 45 questions and search them, which is what makes a participant want in. Opening a tile asks for the Student ID, and the answer is only ever the personal one. There is no general version, so nobody reads generic wording when a specific answer exists for them, and every participant ends up knowing their own SID because it is the price of every answer.</dd>
           <dt>Stored</dt><dd>In the browser only, so they identify once and not on every visit. No cookie, no account, nothing leaves the phone.</dd>
           <dt>Left open</dt><dd>The message my CHI team bar at the bottom stays visible before identification. It is the only route for someone who is unsafe, has lost their documents, or cannot recall their SID at the moment they need help, and the standing rule is to fail toward a human. Everything else is behind the gate.</dd>
@@ -1839,7 +1860,7 @@ async function lookup(sid, dob){                   // the fallback
   return r.json();        // { found:true, sid, first, employer, dsStart, emailMask ... }
 }                         // or { found:false, message } </div>
         <dl class="wgrid" style="margin-top:10px">
-          <dt>Why any of this</dt><dd>Student IDs are four to six sequential digits. An endpoint that answers <code>who is 52341</code> to anybody with the link hands over the whole roster to a script that counts upwards, and a name plus an employer plus programme dates is a ready made phishing kit aimed at a population that already gets targeted. The page is static and has nothing to break into. This one endpoint is the entire attack surface.</dd>
+          <dt>Why any of this</dt><dd>Student IDs are four to six sequential digits. An endpoint that answers <code>who is 52341</code> to anybody with the link hands over the whole roster to a script that counts upwards, and a name plus an employer plus program dates is a ready made phishing kit aimed at a population that already gets targeted. The page is static and has nothing to break into. This one endpoint is the entire attack surface.</dd>
           <dt>The personal link</dt><dd>Run <code>buildMenuLinks()</code> once. It adds <code>Menu Token</code> and <code>Menu Link</code> to Master Data and fills the blanks with 128 random bits each, never regenerating one that already exists, so links already sitting in inboxes keep working. Put <code>Menu Link</code> into the automated emails and a participant arrives already identified, having typed nothing. To revoke one person, clear their token cell and run it again.</dd>
           <dt>Link hygiene</dt><dd>The page strips <code>?p=</code> out of the address bar the moment it is used. Without that, the first participant who copies the link out of their browser into the employer WhatsApp group hands forty people their own record.</dd>
           <dt>Name mode</dt><dd>Name plus date of birth, capped at 8, carrying only <code>sid, first, last, agency, season</code>. In practice the date collapses it to one person, so the chooser almost never appears. Nothing is exposed before a single participant has been identified.</dd>
@@ -2024,6 +2045,32 @@ document.addEventListener('input', e => {
   const spec = builderFor(t);
   const btn = document.getElementById('asksend');
   if(btn) btn.disabled = !askReady(t, spec);
+  if(spec) spec.fields.forEach(field => {
+    if(field.type !== 'date') return;
+    const input = document.querySelector ? document.querySelector('[data-ask="' + field.id + '"]') : null;
+    if(!input || !input.parentNode) return;
+    const notice = dateNotice(t, field);
+    let warn = input.parentNode.querySelector ? input.parentNode.querySelector('.askwarn') : null;
+    if(!notice){
+      if(warn && warn.remove) warn.remove();
+      return;
+    }
+    if(!warn && document.createElement){
+      warn = document.createElement('p');
+      warn.className = 'askwarn';
+      warn.setAttribute('role', 'alert');
+      if(input.insertAdjacentElement) input.insertAdjacentElement('afterend', warn);
+    }
+    if(warn){
+      warn.hidden = false;
+      warn.innerHTML = '<strong>Warning</strong> ' + esc(notice);
+    }
+  });
+});
+document.addEventListener('change', e => {
+  const el = e.target && e.target.closest && e.target.closest('[data-ask]');
+  if(!el || el.type !== 'date') return;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
 });
 document.addEventListener('click', e => {
   const check = e.target && e.target.closest && e.target.closest('[data-ask-check]');

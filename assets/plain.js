@@ -259,7 +259,7 @@ const PLAIN = {
 },
 'I lost my passport or another document': {
   lead:'File a police report, then email CHI.',
-  steps:['File a police report and keep the number.','Contact your embassy for a new passport.','Email CHI with the form on this page.','A new DS-2019 costs 75 dollars.'],
+  steps:['File a police report and keep the number.','Contact your embassy for a new passport.','Email CHI with the form on this page.','The CHI line is open 24/7: 1-800-432-4643, ext. 0.'],
   watch:'A visa can only be replaced outside the United States.'
 },
 'I need a letter or a document from CHI': {
@@ -329,7 +329,7 @@ const PLAIN = {
 },
 'How do I claim my tax overages back': {
   lead:'File Form 1040-NR at sprintax.com. Do not use TurboTax.',
-  steps:['File from February 1 to April 15.','Your W-2 should arrive by January 31.','Give your employer an address that works in January.','Social Security tax taken by mistake: ask payroll first.'],
+  steps:['File from February 1 to April 15.','Many W-2s arrive in February. Do not ask before March 1.','Ask your employer for a late W-2. CHI does not forward it.','Social Security tax taken by mistake: ask payroll first.'],
   watch:'CHI staff are not tax advisors and cannot fill in the forms.'
 },
 'Can I come back next year': {
