@@ -127,11 +127,12 @@ async function loadPage({ endpoint, href, handler }) {
     },
     navigator: { clipboard: { writeText: async () => {} } }
   };
-  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'urgent', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
+  ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'urgent', 'urgentnote', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
   sandbox.document.body = els.body;
   els.body.appendChild = () => {};
   vm.runInNewContext(source, sandbox, { filename: 'page.js' });
   await sandbox.BOOT;
+  if(sandbox.setOfficeNow) sandbox.setOfficeNow('2026-01-06T15:00:00Z');
   return { sandbox, calls, els, memory, history, opened, mails };
 }
 
@@ -841,6 +842,58 @@ test('email and urgent WhatsApp follow the same coordinator and do not guess', a
   assert.equal(decide({ coordinator: 'Amy Jackson extra' }), 'jenn');
   assert.equal(decide({ coordinator: 'Amy', Coordinators: 'Dasha' }), 'jenn');
   assert.equal(decide({}), 'jenn');
+});
+
+test('urgent WhatsApp follows Eastern office hours', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { return jsonResponse(200, person({ dob: '2001-01-04' })); }
+  });
+  const open = page.sandbox.whatsAppOpen;
+  const note = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const noteText = note.slice(note.indexOf('id="urgentnote"'), note.indexOf('</div>', note.indexOf('id="urgentnote"')));
+  assert.match(noteText, /WhatsApp is available Monday to Friday, 9am to 5pm Eastern\./);
+  assert.equal(noteText.includes('911'), false);
+  const content = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  assert.match(content, /If you are in immediate danger, call 911 first\./);
+  assert.match(content, /call or text 988/);
+
+  function show(iso){
+    page.opened.length = 0;
+    page.sandbox.refreshUrgent(iso);
+    return { button: page.els.urgent.hidden, line: page.els.urgentnote.hidden, mail: page.els.msg.hidden };
+  }
+  assert.deepEqual(show('2026-01-06T13:59:59Z'), { button: true, line: false, mail: false });
+  assert.deepEqual(show('2026-01-06T14:00:00Z'), { button: false, line: true, mail: false });
+  assert.deepEqual(show('2026-01-06T21:59:59Z'), { button: false, line: true, mail: false });
+  assert.deepEqual(show('2026-01-06T22:00:00Z'), { button: true, line: false, mail: false });
+  assert.equal(open('2026-07-07T12:59:59Z'), false);
+  assert.equal(open('2026-07-07T13:00:00Z'), true);
+  assert.equal(open('2026-07-07T20:59:59Z'), true);
+  assert.equal(open('2026-07-07T21:00:00Z'), false);
+  assert.equal(open('2026-01-10T15:00:00Z'), false);
+  assert.equal(open('2026-01-11T18:00:00Z'), false);
+  assert.equal(open('2026-01-06T14:00:00Z'), true);
+  assert.equal(open('2026-01-06T22:00:00Z'), false);
+
+  page.sandbox.setOfficeNow('2026-01-06T22:00:00Z');
+  clickUrgent(page);
+  assert.equal(page.opened.length, 0);
+  clickMsg(page);
+  assert.equal(parseMailto(page.mails[0]).to, 'chijennifer@chinet.org');
+  page.sandbox.setOfficeNow('2026-01-06T15:00:00Z');
+  clickUrgent(page);
+  assert.equal(page.opened.length, 1);
+
+  await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
+  page.sandbox.setOfficeNow('2026-01-10T15:00:00Z');
+  page.sandbox.openQuestion('I feel unsafe or I am being harassed');
+  assert.match(page.els.view.innerHTML, /call 911 first/);
+  page.sandbox.openQuestion('I am struggling or homesick');
+  assert.match(page.els.view.innerHTML, /call or text 988/);
+  assert.equal(page.els.urgent.hidden, true);
+  assert.equal(page.els.urgentnote.hidden, false);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {

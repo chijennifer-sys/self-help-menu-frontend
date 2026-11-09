@@ -973,10 +973,59 @@ document.getElementById('msg').addEventListener('click', function(e){
   if(e && e.preventDefault) e.preventDefault();
   openMailDraft(chiMailUrl());
 });
+/* Office clock is America/New_York, including daylight saving. Urgent
+   WhatsApp is Monday to Friday, 9:00:00 through 16:59:59. No holiday list. */
+let officeNow = null;
+function setOfficeNow(value){
+  officeNow = value ? new Date(value) : null;
+  refreshUrgent();
+}
+function officeClock(){
+  return officeNow ? new Date(officeNow.getTime()) : new Date();
+}
+function whatsAppOpen(now){
+  const date = now ? new Date(now) : officeClock();
+  let parts;
+  try{
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(date);
+  }catch(e){ return false; }
+  const bag = {};
+  parts.forEach(p => { bag[p.type] = p.value; });
+  const y = Number(bag.year), mo = Number(bag.month), d = Number(bag.day);
+  let hour = Number(bag.hour);
+  if(hour === 24) hour = 0;
+  const minute = Number(bag.minute), second = Number(bag.second);
+  const weekday = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+  if(weekday === 0 || weekday === 6) return false;
+  const secs = hour * 3600 + minute * 60 + second;
+  return secs >= 9 * 3600 && secs < 17 * 3600;
+}
+function refreshUrgent(now){
+  const open = whatsAppOpen(now);
+  const btn = document.getElementById('urgent');
+  const note = document.getElementById('urgentnote');
+  if(btn){
+    btn.hidden = !open;
+    if(btn.style) btn.style.display = open ? '' : 'none';
+  }
+  if(note){
+    note.hidden = open;
+    if(note.style) note.style.display = open ? 'none' : '';
+  }
+}
+
 document.getElementById('urgent').addEventListener('click', function(e){
   if(e && e.preventDefault) e.preventDefault();
+  if(!whatsAppOpen()) return;
   if(window.open) window.open(chiWhatsAppUrl(), '_blank', 'noopener,noreferrer');
 });
+refreshUrgent();
+if(typeof setInterval === 'function') setInterval(function(){ refreshUrgent(); }, 60000);
 document.getElementById('portal').addEventListener('click', () => {
   const i = T.findIndex(t => t.q === 'I cannot get into my CHI portal');
   if(i < 0) return;
