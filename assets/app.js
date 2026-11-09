@@ -672,7 +672,7 @@ function renderHome(){
       }).join('')}
     </div>
     <div class="brandmark">
-      <img src="assets/chi-logo.png"
+      <img src="assets/chi-logo.png" loading="lazy" decoding="async"
            alt="Cultural Homestay International, since 1980" width="72" height="72">
       <span>Cultural exchange programs since 1980</span>
     </div>`;
@@ -703,12 +703,12 @@ function renderStage(){
     : `<div class="crumb"><button data-go="home">${back} All stages</button></div>`;
   let lead = `<p>${esc(s.d)}</p>`;
   if(ME && s.key === 'life'){
-    lead = `<p>These come up at any point in your programme, not at one particular time.</p>`;
+    lead = `<p>These come up at any point in your program, not at one particular time.</p>`;
   } else if(ME && ME.stage === s.key){
     const where =
       ME.day === null ? ''
       : ME.day < 0 ? `You start in ${Math.abs(ME.day)} days.`
-      : ME.daysLeft < 0 ? `Your programme ended ${Math.abs(ME.daysLeft)} days ago.`
+      : ME.daysLeft < 0 ? `Your program ended ${Math.abs(ME.daysLeft)} days ago.`
       : ME.daysLeft <= 14 ? `You are on day ${ME.day} of ${ME.len}, with ${ME.daysLeft} to go.`
       : `You are on day ${ME.day} of ${ME.len}.`;
     lead = `<p>${where} These are the questions people ask at this point.</p>`;
@@ -1708,7 +1708,7 @@ function renderLeaf(){
         ${tileLinkButton(t)}
       </div>
       <div class="leaf-b">
-        ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
+        ${youHtml ? `<div class="you"><span class="yl">Your program</span>${youHtml}</div>` : ''}
         <div class="screen">
           <p class="lead">${fillSmart((t.plain && t.plain.lead) || t.lead)}</p>
           ${(t.plain && t.plain.steps && t.plain.steps.length) ? `<ol class="steps">${t.plain.steps.map(step => { const text = fillSmart(step); return text ? '<li>' + text + '</li>' : ''; }).join('')}</ol>` : ''}
@@ -1794,11 +1794,11 @@ function renderWiring(){
         <dl class="wgrid">
           <dt>Input</dt><dd>One field. Digits are treated as a Student Program Id and go straight to the participant. Anything else is treated as a name. Either route ends holding a SID, and every deadline, every merge field and every prefilled form runs off that SID alone.</dd>
           <dt>Name mode</dt><dd>One name matches on first, family or preferred name. Two or more match first and family. More than 8 results is refused and asks for the Student ID, so the field cannot be used to walk the roster. Several matches show a chooser carrying only name, agency name and season. No SID, no employer, no email until the person picks themselves.</dd>
-          <dt>Worth knowing</dt><dd>A five digit SID on its own identifies a participant, and SIDs run in sequence. Anyone typing numbers in that range sees a name, an employer and programme dates. Email is never displayed. If that is more than the office wants to accept, the fix is not a second field, it is the personalised link in the drip email, which removes typing altogether and can carry a token no one can guess.</dd>
+          <dt>Worth knowing</dt><dd>A five digit SID on its own identifies a participant, and SIDs run in sequence. Anyone typing numbers in that range sees a name, an employer and program dates. Email is never displayed. If that is more than the office wants to accept, the fix is not a second field, it is the personalised link in the drip email, which removes typing altogether and can carry a token no one can guess.</dd>
           <dt>Returns</dt><dd>One participant, not a list: <code>sid, first, last, email, agency, country, employer, location, job, dsStart, dsEnd, arrival, hasSSN</code>. Never the whole row, never anyone else.</dd>
           <dt>Agency code</dt><dd>The code comes back and stays internal. It is what routes the case, picks the main office contact and groups the reporting, and a participant never sees it. The page carries the 52 code to name pairs from the Agencies sheet and shows the name instead, so AEX reads as American Experience and EXPB as Experience Work and Travel Doo. If a new agency is added to the roster without a row in the Agencies sheet, the page falls back to the country rather than printing a code.</dd>
-          <dt>Computes</dt><dd>Day in programme, days left, SEVIS validation within 3 days of arrival, SSN deadline at end minus 45, grace period end at last day worked plus 30, and the gap between landing and the insurance start date.</dd>
-          <dt>Changes</dt><dd>The stage question disappears. The programme day is computed from the DS dates, so the page opens on the right stage instead of asking a participant to classify themselves, and the other three stages stay one tap away on a switcher. ${T.filter(t=>t.you).length} of ${T.length} tiles swap general wording for their own employer, their own dates and their own deadline. Every Tally link arrives prefilled with SID, name, employer and email.</dd>
+          <dt>Computes</dt><dd>Day in program, days left, SEVIS validation within 3 days of arrival, SSN deadline at end minus 45, grace period end at last day worked plus 30, and the gap between landing and the insurance start date.</dd>
+          <dt>Changes</dt><dd>The stage question disappears. The program day is computed from the DS dates, so the page opens on the right stage instead of asking a participant to classify themselves, and the other three stages stay one tap away on a switcher. ${T.filter(t=>t.you).length} of ${T.length} tiles swap general wording for their own employer, their own dates and their own deadline. Every Tally link arrives prefilled with SID, name, employer and email.</dd>
           <dt>Gate</dt><dd>The tiles are open, the answers are not. Anyone can browse all 45 questions and search them, which is what makes a participant want in. Opening a tile asks for the Student ID, and the answer is only ever the personal one. There is no general version, so nobody reads generic wording when a specific answer exists for them, and every participant ends up knowing their own SID because it is the price of every answer.</dd>
           <dt>Stored</dt><dd>In the browser only, so they identify once and not on every visit. No cookie, no account, nothing leaves the phone.</dd>
           <dt>Left open</dt><dd>The message my CHI team bar at the bottom stays visible before identification. It is the only route for someone who is unsafe, has lost their documents, or cannot recall their SID at the moment they need help, and the standing rule is to fail toward a human. Everything else is behind the gate.</dd>
@@ -1839,7 +1839,7 @@ async function lookup(sid, dob){                   // the fallback
   return r.json();        // { found:true, sid, first, employer, dsStart, emailMask ... }
 }                         // or { found:false, message } </div>
         <dl class="wgrid" style="margin-top:10px">
-          <dt>Why any of this</dt><dd>Student IDs are four to six sequential digits. An endpoint that answers <code>who is 52341</code> to anybody with the link hands over the whole roster to a script that counts upwards, and a name plus an employer plus programme dates is a ready made phishing kit aimed at a population that already gets targeted. The page is static and has nothing to break into. This one endpoint is the entire attack surface.</dd>
+          <dt>Why any of this</dt><dd>Student IDs are four to six sequential digits. An endpoint that answers <code>who is 52341</code> to anybody with the link hands over the whole roster to a script that counts upwards, and a name plus an employer plus program dates is a ready made phishing kit aimed at a population that already gets targeted. The page is static and has nothing to break into. This one endpoint is the entire attack surface.</dd>
           <dt>The personal link</dt><dd>Run <code>buildMenuLinks()</code> once. It adds <code>Menu Token</code> and <code>Menu Link</code> to Master Data and fills the blanks with 128 random bits each, never regenerating one that already exists, so links already sitting in inboxes keep working. Put <code>Menu Link</code> into the automated emails and a participant arrives already identified, having typed nothing. To revoke one person, clear their token cell and run it again.</dd>
           <dt>Link hygiene</dt><dd>The page strips <code>?p=</code> out of the address bar the moment it is used. Without that, the first participant who copies the link out of their browser into the employer WhatsApp group hands forty people their own record.</dd>
           <dt>Name mode</dt><dd>Name plus date of birth, capped at 8, carrying only <code>sid, first, last, agency, season</code>. In practice the date collapses it to one person, so the chooser almost never appears. Nothing is exposed before a single participant has been identified.</dd>

@@ -2130,3 +2130,44 @@ test('staff emails lead with the decision facts and phases pick six tiles', asyn
   assert.equal(open.includes('Aramark'), false);
   assert.match(open, /This answer is different for every person/);
 });
+
+test('every tile slug opens after login and a bad slug opens the menu', async () => {
+  const probe = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('slug probe must not look anyone up'); }
+  });
+  const entries = Object.entries(probe.sandbox.TILE_SLUGS);
+  assert.equal(entries.length, 72);
+  for (const [title, slug] of entries) {
+    const page = await loadPage({
+      endpoint: 'https://lookup.test/exec',
+      href: 'https://example.test/menu/?tile=' + encodeURIComponent(slug) + '&sid=10001&dob=2001-01-04',
+      handler() { throw new Error('a tile link must not look anyone up'); }
+    });
+    const locked = page.els.view.innerHTML;
+    const titleRe = new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    assert.match(locked, titleRe, slug);
+    assert.match(locked, /date of birth/i, slug);
+    assert.equal(locked.includes('Aramark'), false, slug);
+    assert.equal(page.history.url.includes('sid='), false, slug);
+    assert.equal(page.history.url.includes('2001-01-04'), false, slug);
+    assert.match(page.history.url, new RegExp('tile=' + slug));
+    page.sandbox.setMe({
+      sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+      employer: 'Aramark', dsStart: '2026-06-01', dsEnd: '2026-09-15'
+    });
+    page.sandbox.render();
+    const open = page.els.view.innerHTML;
+    assert.match(open, titleRe, slug + ' after login');
+    assert.equal(open.includes('This answer is different for every person'), false, slug);
+  }
+  const bad = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/?tile=not-a-real-tile',
+    handler() { throw new Error('a bad slug must not look anyone up'); }
+  });
+  assert.match(bad.els.view.innerHTML, /Where are you now/);
+  assert.equal(bad.els.view.innerHTML.includes('Copy link to this tile'), false);
+  assert.equal(new URL(bad.history.url, 'https://example.test').searchParams.get('tile'), null);
+});
