@@ -79,6 +79,7 @@ async function loadPage({ endpoint, href, handler }) {
   const history = { url: '', replaceState(_s, _t, next) { history.url = next; } };
   const opened = [];
   const mails = [];
+  const copied = [];
   const windowObj = {
     location: { href },
     scrollTo() {},
@@ -128,7 +129,7 @@ async function loadPage({ endpoint, href, handler }) {
         return el;
       }
     },
-    navigator: { clipboard: { writeText: async () => {} } }
+    navigator: { clipboard: { writeText: async (text) => { copied.push(String(text)); } } }
   };
   ['body', 'idq', 'iddob', 'iderr', 'idzone', 'view', 'searchwrap', 'sopen', 's', 'sclear', 'msg', 'whatsapp', 'whatsappnote', 'portal', 'vp', 'vw', 'participant', 'wiring', 'bar', 'shell', 'document'].forEach(make);
   sandbox.document.body = els.body;
@@ -136,7 +137,7 @@ async function loadPage({ endpoint, href, handler }) {
   vm.runInNewContext(source, sandbox, { filename: 'page.js' });
   await sandbox.BOOT;
   if(sandbox.setOfficeNow) sandbox.setOfficeNow('2026-01-06T15:00:00Z');
-  return { sandbox, calls, els, memory, history, opened, mails };
+  return { sandbox, calls, els, memory, history, opened, mails, copied };
 }
 
 function stored(memory) {
@@ -1521,6 +1522,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
     sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
     season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
     dsStart: '2026-06-01', dsEnd: '2026-09-15', embassyInterview: '2026-05-01',
+    country: 'Peru', sevisId: 'N0001234567',
     dob: '2001-01-04', tok: 'secret-token-value', agency: 'AEX', coordinator: 'kathleen'
   };
   page.sandbox.setMe(record);
@@ -1534,7 +1536,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
     spec.fields.forEach(field => {
       if(field.when || field.prefill || field.lock) return;
       let value = 'A short note';
-      if(field.type === 'choice') value = field.options[0];
+      if(field.type === 'choice' || field.type === 'checks') value = field.options[0];
       else if(field.type === 'time') value = '15:00';
       else if(field.type === 'date') value = field.max === 'dsEndPlus30' ? '2026-10-15' : '2026-07-01';
       page.sandbox.setAskAnswer(field.id, value);
@@ -1561,6 +1563,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
   assert.equal(page.sandbox.openAskMail(), false);
 
   page.sandbox.setAskAnswer('coverEnd', '2026-10-15');
+  page.sandbox.setAskAnswer('canPay', 'Yes');
   page.sandbox.setAskAnswer('__urgent', 'Yes');
   const before = page.calls.length;
   assert.equal(page.sandbox.openAskMail(), true);
@@ -1587,6 +1590,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
   page.sandbox.setAskAnswer('coverEnd', '2026-10-15');
   page.sandbox.setAskAnswer('where', 'Boston, MA');
   page.sandbox.setAskAnswer('depart', '2026-10-01');
+  page.sandbox.setAskAnswer('canPay', 'Yes');
   page.sandbox.setAskAnswer('__urgent', 'No');
   assert.equal(page.sandbox.openAskMail(), true);
   mail = mailOf();
@@ -1598,16 +1602,72 @@ test('guided emails use the staff subject and do not send themselves', async () 
   page.sandbox.openQuestion('Can I travel inside or outside the United States');
   html = page.els.view.innerHTML;
   assert.match(html, /Request a travel signature 2 weeks ahead/);
-  fill(page.sandbox.ASK_FORMS['Can I travel inside or outside the United States']);
+  assert.match(html, /Attach: a clear full page scan of your DS-2019/);
+  const attachAt = html.indexOf('Attach: a clear full page scan of your DS-2019');
+  const sendAt = html.indexOf('Review my email');
+  assert.ok(attachAt > 0 && attachAt < sendAt);
+  assert.match(html, /What does Entries say on your visa/);
+  page.sandbox.setAskAnswer('back', '2026-09-15');
+  page.sandbox.setAskAnswer('leave', '2026-07-01');
+  page.sandbox.setAskAnswer('dest', 'Mexico City, Mexico');
+  page.sandbox.setAskAnswer('bossYes', 'Yes');
+  page.sandbox.setAskAnswer('scan', 'Yes');
+  page.sandbox.setAskAnswer('email', 'ada@example.com');
+  page.sandbox.setAskAnswer('whatsapp', '+1 555 0100');
+  page.sandbox.setAskAnswer('entries', 'Multiple (M)');
+  assert.match(page.els.view.innerHTML, /before your program end date/);
+  assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setAskAnswer('bossYes', 'No');
+  page.sandbox.setAskAnswer('back', '2026-07-10');
+  assert.equal(page.sandbox.openAskMail(), false);
+  assert.match(page.els.view.innerHTML, /Ask your manager first/);
+  page.sandbox.setAskAnswer('bossYes', 'Yes');
+  page.sandbox.setAskAnswer('__urgent', 'Yes');
   assert.equal(page.sandbox.openAskMail(), true);
   mail = mailOf();
-  assert.equal(mail.to, 'chiwt@chinet.org');
-  assert.equal(mail.cc, 'chikathleenr@chinet.org');
-  assert.equal(mail.subject, 'Travel Signature Request | Summer 2026 | 10001 | Ada Lovelace');
-  assert.match(mail.body, /Destination: A short note/);
-  assert.match(mail.body, /How CHI gets the DS-2019: I will email a photo of the full page/);
-  assert.match(mail.body, /Request a travel signature 2 weeks ahead/);
-  assert.equal(/2001-01-04|secret-token-value|\bAEX\b|agency/i.test(mail.body), false);
+  assert.equal(mail.to, 'CHIWT@chinet.org');
+  assert.equal(mail.cc, null);
+  assert.equal(mail.subject, '⏰ Travel Signature Request, Ada Lovelace, SID 10001');
+  const travelLines = [
+    'Hello CHI Team,',
+    'I am writing to request a travel signature on my DS-2019.',
+    'Full name: Ada Lovelace',
+    'Student Program ID: 10001',
+    'Employer: Aramark',
+    'Program dates: June 1, 2026 to September 15, 2026',
+    'Visa type: J-1, Entries Multiple (M)',
+    'Travel destination: Mexico City, Mexico',
+    'Departure date from the United States: July 1, 2026',
+    'Return date to the United States: July 10, 2026',
+    'My employer has approved this time off. A clear scan of my DS-2019 is attached. Please sign it and send it back before my departure date.',
+    'Thank you,',
+    'ada@example.com',
+    '+1 555 0100'
+  ];
+  let travelAt = -1;
+  travelLines.forEach(line => {
+    const at = mail.body.indexOf(line);
+    assert.ok(at > travelAt, line);
+    travelAt = at;
+  });
+  assert.equal(mail.body.includes('Programme dates'), false);
+  assert.equal(/2001-01-04|secret-token-value|\bAEX\b|agency|chikathleenr@chinet.org/i.test(mail.body), false);
+
+  page.sandbox.setMe(Object.assign({}, record, { visaEntries: 'M' }));
+  page.sandbox.openQuestion('Can I travel inside or outside the United States');
+  assert.equal(page.els.view.innerHTML.includes('What does Entries say on your visa'), false);
+  page.sandbox.setAskAnswer('back', '2026-07-10');
+  page.sandbox.setAskAnswer('leave', '2026-07-01');
+  page.sandbox.setAskAnswer('dest', 'Mexico City, Mexico');
+  page.sandbox.setAskAnswer('bossYes', 'Yes');
+  page.sandbox.setAskAnswer('scan', 'Yes');
+  page.sandbox.setAskAnswer('email', 'ada@example.com');
+  page.sandbox.setAskAnswer('whatsapp', '+1 555 0100');
+  page.sandbox.setAskAnswer('__urgent', 'No');
+  assert.equal(page.sandbox.openAskMail(), true);
+  mail = mailOf();
+  assert.match(mail.body, /Visa type: J-1, Entries M/);
+  assert.equal(mail.subject, 'Travel Signature Request, Ada Lovelace, SID 10001');
 
   page.sandbox.openQuestion('I want to go home early');
   assert.match(page.els.view.innerHTML, /Submit a shorten program request/);
@@ -1629,14 +1689,221 @@ test('guided emails use the staff subject and do not send themselves', async () 
     if(spec.fields.some(field => field.id === 'status')) page.sandbox.setAskAnswer('status', 'Approved');
     assert.equal(page.sandbox.openAskMail(), true, q);
     mail = mailOf();
-    const to = spec.to === 'chiwt' ? 'chiwt@chinet.org' : 'chikathleenr@chinet.org';
+    const to = spec.toAddress || (spec.to === 'chiwt' ? 'chiwt@chinet.org' : 'chikathleenr@chinet.org');
     const cc = spec.cc === 'coordinator' ? 'chikathleenr@chinet.org' : spec.cc === 'jennifer' ? 'chijennifer@chinet.org' : null;
     assert.equal(mail.to, to, q);
     assert.equal(mail.cc, cc, q);
-    assert.equal(mail.subject, spec.topic + ' | Summer 2026 | 10001 | Ada Lovelace', q);
-    assert.match(mail.body, /Participant Name: Ada Lovelace/);
-    assert.match(mail.body, /Student ID: 10001/);
+    if(spec.layout === 'travel'){
+      assert.equal(mail.subject, 'Travel Signature Request, Ada Lovelace, SID 10001', q);
+      assert.match(mail.body, /Hello CHI Team,/, q);
+      assert.match(mail.body, /Program dates: June 1, 2026 to September 15, 2026/, q);
+    }else{
+      assert.equal(mail.subject, spec.topic + ' | Summer 2026 | 10001 | Ada Lovelace', q);
+      assert.match(mail.body, /Participant Name: Ada Lovelace/, q);
+      assert.match(mail.body, /Student ID: 10001/, q);
+    }
     assert.equal(/2001-01-04|secret-token-value|\bAEX\b|\bagency\b/i.test(mail.body + '\n' + mail.subject), false, q);
     assert.equal(page.calls.length, 0);
+  });
+});
+
+test('lost passport and scooter accident emails collect the incident facts', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('an incident email must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', country: 'Peru', sevisId: 'N0001234567',
+    dob: '2001-01-04', tok: 'secret-token-value', agency: 'AEX', coordinator: 'kathleen'
+  });
+  function mailOf(){
+    const url = page.mails[page.mails.length - 1];
+    const mail = parseMailto(url);
+    return mail;
+  }
+  function fill(q){
+    const spec = page.sandbox.ASK_FORMS[q];
+    spec.fields.forEach(field => {
+      if(field.when || field.prefill || field.lock) return;
+      let value = 'A short note';
+      if(field.type === 'choice' || field.type === 'checks') value = field.options[0];
+      else if(field.type === 'time') value = '15:00';
+      else if(field.type === 'date') value = '2026-07-01';
+      page.sandbox.setAskAnswer(field.id, value);
+    });
+  }
+  const today = new Date();
+  const todayIso = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+  page.sandbox.openQuestion('I lost my passport or another document');
+  let html = page.els.view.innerHTML;
+  assert.match(html, /Which items are gone/);
+  assert.match(html, /value="Peru"/);
+  assert.match(html, /value="Ocean City"/);
+  assert.match(html, /value="NJ"/);
+  assert.match(html, new RegExp('value="' + todayIso + '"'));
+  assert.match(html, /File a police report and keep the number/);
+  assert.match(html, /Contact your embassy for a new passport/);
+  fill('I lost my passport or another document');
+  page.sandbox.setAskAnswer('items', 'Passport, Visa, DS-2019');
+  page.sandbox.setAskAnswer('__urgent', 'No');
+  assert.equal(page.sandbox.openAskMail(), true);
+  let mail = mailOf();
+  assert.equal(mail.to, 'chikathleenr@chinet.org');
+  assert.equal(mail.subject, 'Incident - Lost Passport | Summer 2026 | 10001 | Ada Lovelace');
+  assert.match(mail.body, /Participant Name: Ada Lovelace/);
+  assert.match(mail.body, /Student ID: 10001/);
+  assert.match(mail.body, /Country: Peru/);
+  assert.match(mail.body, /SEVIS ID: N0001234567/);
+  assert.match(mail.body, /Coordinator: Kathleen/);
+  assert.match(mail.body, /Items: Passport, Visa, DS-2019/);
+  assert.equal(mail.body.includes('2001-01-04'), false);
+  assert.equal(/\bdate of birth\b|\bSSN\b|card number/i.test(mail.body), false);
+  assert.equal(page.calls.length, 0);
+
+  page.sandbox.openQuestion('I was in an accident');
+  html = page.els.view.innerHTML;
+  assert.match(html, /Will you miss work\?/);
+  assert.match(html, /When can you go back to work\?/);
+  assert.match(html, /Were you wearing a helmet\?/);
+  assert.match(html, /Doctor has not said yet/);
+  assert.match(html, /Did the doctor give you a note\?/);
+  assert.match(html, /attach the note in your email app/);
+  assert.equal(html.includes('Not on a bike or scooter'), false);
+  assert.match(html, /Call IMG at 1-855-731-9445/);
+  assert.match(html, /data-ask-send="1" disabled/);
+  assert.equal(/911/.test(page.els.bar.textContent + page.els.whatsappnote.textContent), false);
+
+  fill('I was in an accident');
+  page.sandbox.setAskAnswer('backWork', '');
+  assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setAskAnswer('backWork', 'Doctor has not said yet');
+  page.sandbox.setAskAnswer('missWork', 'Yes');
+  assert.equal(page.sandbox.openAskMail(), false);
+  page.sandbox.setAskAnswer('daysSoFar', '3');
+  page.sandbox.setAskAnswer('helmet', 'No');
+  page.sandbox.setAskAnswer('doctorNote', 'Yes');
+  page.sandbox.setAskAnswer('safe', 'No');
+  assert.match(page.els.view.innerHTML, /Call 911/);
+  page.sandbox.setAskAnswer('__urgent', 'No');
+  assert.equal(page.sandbox.openAskMail(), true);
+  mail = mailOf();
+  assert.equal(mail.to, 'chikathleenr@chinet.org');
+  assert.equal(mail.subject, 'Incident - Scooter Accident | Summer 2026 | 10001 | Ada Lovelace');
+  const missAt = mail.body.indexOf('Will you miss work?: Yes');
+  const backAt = mail.body.indexOf('When can you go back to work?: Doctor has not said yet');
+  const helmAt = mail.body.indexOf('Were you wearing a helmet?: No');
+  const storyAt = mail.body.indexOf('What happened:');
+  assert.ok(missAt > 0 && missAt < storyAt, 'miss work is above the story');
+  assert.ok(backAt > missAt && backAt < storyAt);
+  assert.ok(helmAt > backAt && helmAt < storyAt);
+  assert.match(mail.body, /Days missed so far: 3/);
+  assert.match(mail.body, /Doctor gave a note: Yes/);
+  assert.match(mail.body, /SEVIS ID: N0001234567/);
+  assert.equal(mail.body.includes('2001-01-04'), false);
+  assert.equal(page.calls.length, 0);
+});
+
+test('simple tiles keep email behind Still need help', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('self-serve tiles must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', country: 'Peru'
+  });
+  page.sandbox.openQuestion('How do I get my I-94');
+  let html = page.els.view.innerHTML;
+  const helpAt = html.indexOf('Still need help?');
+  const triedAt = html.indexOf('What did you already try?');
+  assert.ok(helpAt > 0 && triedAt > helpAt);
+  assert.match(html, /Never choose Apply for I-94|Never pay/);
+  assert.equal(/911/.test(page.els.bar.textContent || ''), false);
+
+  page.sandbox.openQuestion('How do I extend my insurance for my travel period');
+  html = page.els.view.innerHTML;
+  assert.equal(html.includes('Still need help?'), false);
+  assert.match(html, /Review my email/);
+
+  page.sandbox.openQuestion('I am sick or I am hurt');
+  html = page.els.view.innerHTML;
+  assert.match(html, /Still need help\?/);
+  assert.match(html, /What did you already try\?/);
+  assert.match(html, /Start with free Teladoc/);
+  const sickHelp = html.indexOf('Still need help?');
+  const teladoc = html.indexOf('Start with free Teladoc');
+  assert.ok(teladoc > 0 && teladoc < sickHelp);
+});
+
+test('tile links open after login and carry no student data', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/?tile=travel-signature&sid=10001&dob=2001-01-04&name=Ada',
+    handler() {
+      return jsonResponse(200, person({
+        employer: 'Aramark', location: 'Ocean City, NJ',
+        dsStart: '2026-06-01', dsEnd: '2026-09-15', birthCountry: 'Romania'
+      }));
+    }
+  });
+  let html = page.els.view.innerHTML;
+  assert.match(html, /Can I travel inside or outside the United States/);
+  assert.match(html, /date of birth/i);
+  assert.match(html, /Copy link to this tile/);
+  assert.equal(html.includes('Aramark'), false);
+  assert.equal(page.calls.length, 0);
+  const bar = new URL(page.history.url, 'https://example.test');
+  assert.equal(bar.searchParams.get('tile'), 'travel-signature');
+  assert.equal(bar.searchParams.get('sid'), null);
+  assert.equal(bar.searchParams.get('dob'), null);
+  assert.equal(bar.searchParams.get('name'), null);
+  assert.equal(page.history.url.includes('10001'), false);
+  assert.equal(page.history.url.includes('2001-01-04'), false);
+  const link = html.match(/data-tile-link="([^"]+)"/)[1].replace(/&amp;/g, '&');
+  assert.equal(link, 'https://example.test/menu/?tile=travel-signature');
+  const button = {
+    dataset: { tileLink: link },
+    getAttribute() { return link; },
+    textContent: '',
+    closest(sel) { return sel === '[data-tile-link]' ? button : null; }
+  };
+  (page.els.document.listeners.click || []).forEach(fn => fn({ target: { closest(sel) { return button.closest(sel); } } }));
+  assert.equal(page.copied[0], 'https://example.test/menu/?tile=travel-signature');
+
+  await identifyAs(page, person({}));
+  html = page.els.view.innerHTML;
+  assert.match(html, /Aramark/);
+  assert.match(html, /Request a travel signature 2 weeks ahead/);
+  const after = new URL(page.history.url, 'https://example.test');
+  assert.equal(after.searchParams.get('tile'), 'travel-signature');
+  assert.equal(after.searchParams.get('sid'), null);
+  assert.equal(page.history.url.includes('10001'), false);
+
+  const bad = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/?tile=not-a-real-tile',
+    handler() { throw new Error('unknown slug must not look anyone up'); }
+  });
+  assert.match(bad.els.view.innerHTML, /Where are you now/);
+  assert.equal(bad.els.view.innerHTML.includes('Copy link to this tile'), false);
+  assert.equal(new URL(bad.history.url, 'https://example.test').searchParams.get('tile'), null);
+  assert.equal(bad.calls.length, 0);
+
+  const slugs = page.sandbox.TILE_SLUGS;
+  const values = Object.values(slugs);
+  assert.equal(values.length, 72);
+  assert.equal(new Set(values).size, 72);
+  assert.equal(slugs['Can I travel inside or outside the United States'], 'travel-signature');
+  values.forEach(slug => assert.match(slug, /^[a-z0-9]+(?:-[a-z0-9]+)*$/));
+  const docs = fs.readFileSync(path.join(ROOT, 'docs', 'tile-links.md'), 'utf8');
+  Object.keys(slugs).forEach(q => {
+    assert.ok(docs.includes('`' + slugs[q] + '`'), slugs[q]);
+    assert.ok(docs.includes(q), q);
   });
 });
