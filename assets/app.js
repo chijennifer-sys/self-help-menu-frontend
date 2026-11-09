@@ -390,7 +390,7 @@ function qrow(t){
   return `<button class="tile" data-leaf="${i}" style="--tc:var(--s${st.n});--tl:var(--s${st.n}-soft);--ts:var(--s${st.n}-soft)">
     ${ICO(t.ic)}
     <span class="lab">${esc(t.q)}</span>
-    <span class="rt">${t.r === 'Answer' ? 'Answer here' : t.r === 'File' ? 'Short form' : t.r === 'Team' ? 'A person replies' : 'Your agency'}</span>
+    <span class="rt">${t.r === 'Answer' ? 'Answer here' : t.r === 'File' ? 'Short form' : t.r === 'Team' ? 'A person replies' : 'Your CHI team'}</span>
   </button>`;
 }
 
@@ -436,7 +436,7 @@ function leafBody(t){
     if(t.q === 'My visa appointment' && String(p).indexOf('Is your appointment after your start date') === 0){
       const when = ME && asText(ME.dsStartF);
       const sentence = when
-        ? 'Is your appointment after your start date, <b>' + esc(when) + '</b>? Tell your agency now. CHI can write a letter to move your dates. But your agency has to ask for it.'
+        ? 'Is your appointment after your start date, <b>' + esc(when) + '</b>? CHI can write a letter to move your dates.'
         : esc(p);
       return '<p>' + sentence + '</p>';
     }
@@ -812,10 +812,16 @@ document.addEventListener('click', e => {
   if(st && !lf){ state.stage=st.dataset.stage; state.leaf=null; render(); window.scrollTo({top:0,behavior:'instant'}); return; }
   if(ac){
     const k = ac.dataset.act;
-    ac.textContent = k==='agency' ? (ME && ME.agencyName ? ME.agencyName + ' is your agency. Their contact details are on your job offer.' : 'Your agency contact is on your job offer')
-      : k==='answer' ? 'Go back and choose another topic'
-      : k==='template' ? 'Sent. Check your email, including spam'
-      : 'Your CHI team has this. You will hear back within one working day';
+    if(k==='agency' || k==='chi'){
+      const bar = document.getElementById('msg');
+      if(bar && bar.focus) bar.focus();
+      if(bar && bar.scrollIntoView) bar.scrollIntoView({block:'nearest'});
+      ac.textContent = 'Use Message my CHI team at the bottom of the page';
+    } else {
+      ac.textContent = k==='answer' ? 'Go back and choose another topic'
+        : k==='template' ? 'Sent. Check your email, including spam'
+        : 'Your CHI team has this. You will hear back within one working day';
+    }
     ac.disabled = true; ac.style.opacity = '.75'; ac.style.cursor = 'default';
   }
 });

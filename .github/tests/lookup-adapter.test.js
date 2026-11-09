@@ -549,10 +549,10 @@ test('My visa appointment uses Birth Country, the agency name, and the start dat
   assert.equal(me.country, undefined);
   assert.equal(Object.hasOwn(me, 'email'), false);
   const callsAfterOpen = page.calls.length;
-  const button = clickAct(page, 'agency');
+  const button = clickAct(page, 'chi');
   assert.equal(page.calls.length, callsAfterOpen);
-  assert.match(button.textContent, /American Experience is your agency/);
-  assert.equal(button.textContent.includes('raw-secret-box@example.com'), false);
+  assert.equal(button.textContent, 'Use Message my CHI team at the bottom of the page');
+  assert.equal(/agency|mailto|@/i.test(button.textContent), false);
 
   const byOffice = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -587,7 +587,8 @@ test('My visa appointment omits a missing country, agency name, or start date', 
   page.sandbox.openQuestion('My visa appointment');
   const html = page.els.view.innerHTML;
   assert.match(html, /Your agency at home books your embassy appointment\. CHI does not book it\./);
-  assert.match(html, /Is your appointment after your start date\? Tell your agency now\./);
+  assert.match(html, /Is your appointment after your start date\? CHI can write a letter to move your dates\./);
+  assert.equal(/ask your agency|tell your agency|message my agency/i.test(html), false);
   assert.equal(html.includes('{'), false);
   assert.equal(html.includes('ZZZZ'), false);
   assert.equal(html.includes('Hidden Employer'), false);
@@ -609,6 +610,36 @@ test('My visa appointment omits a missing country, agency name, or start date', 
   const other = countryOnly.els.view.innerHTML;
   assert.equal(other.includes('Romania'), false);
   assert.equal(other.includes('{country}'), false);
+});
+
+test('participant-facing copy does not tell anyone to contact an agency', () => {
+  const vm = require('node:vm');
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8') + '\nglobalThis.__T=T; globalThis.__R=ROUTE_D;';
+  const sandbox = {};
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(src, sandbox);
+  const banned = /ask your agency|ask them for the tracking|tell your agency|message my agency|message your agency|contact your agency|your agency contact|apply through them|apply through the same agency|ask your agency at home|mailto:/i;
+  const hits = [];
+  for (const t of sandbox.__T) {
+    const bits = [];
+    if (t.you) bits.push(t.you);
+    if (t.lead) bits.push(t.lead);
+    (t.body || []).forEach(p => bits.push(p));
+    (t.need || []).forEach(p => bits.push(p));
+    if (t.act) {
+      bits.push(t.act.label);
+      if (t.act.kind === 'agency') hits.push(t.q + ' still has an agency action');
+    }
+    if (t.clock) bits.push(t.clock.l + ' ' + t.clock.t);
+    if (t.sample) (t.sample.lines || []).forEach(l => bits.push(l));
+    bits.forEach(s => { if (banned.test(String(s))) hits.push(t.q + ': ' + s); });
+  }
+  assert.deepEqual(hits, []);
+  assert.equal(banned.test(sandbox.__R.Agency), false);
+  assert.equal(/question for the agency/i.test(sandbox.__R.Agency), false);
+  const app = fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8');
+  assert.equal(app.includes('Their contact details are on your job offer'), false);
+  assert.equal(app.includes('Your agency contact is on your job offer'), false);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
