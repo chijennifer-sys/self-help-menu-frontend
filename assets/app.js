@@ -1152,8 +1152,8 @@ addAsk(['Can I travel inside or outside the United States', 'Can I travel before
   attachLine:'Attach: a clear full page scan of your DS-2019',
   fields:[
     {id:'dest', mail:'Travel destination', label:'Which country and city are you going to?', type:'text', required:true},
-    {id:'leave', mail:'Departure date from the United States', label:'What date do you leave the United States?', type:'date', required:true},
-    {id:'back', mail:'Return date to the United States', label:'What date do you come back to the United States?', type:'date', required:true, max:'dayBeforeDsEnd'},
+    {id:'leave', mail:'Departure date from the United States', label:'What date do you leave the United States?', type:'date', required:true, notPast:true},
+    {id:'back', mail:'Return date to the United States', label:'What date do you come back to the United States?', type:'date', required:true, max:'dayBeforeDsEnd', usReturn:true, after:'leave'},
     {id:'bossYes', mail:'Employer approved this time off', label:'Did your employer approve this time off?', type:'choice', required:true, options:['Yes', 'No'], must:'Yes', deny:'Ask your manager first.'},
     {id:'scan', mail:'DS-2019 scan attached', label:'The DS-2019 scan is attached', type:'checks', required:true, options:['Yes']},
     {id:'email', mail:'Email', label:'What email should CHI use to send it back?', type:'text', required:true},
@@ -1328,7 +1328,7 @@ addAsk(['Where do I enter my flight details'], {
   topic:'Flight change', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'What changed', label:'What changed?', type:'choice', required:true, options:['New flight', 'Late landing', 'No flight yet']},
-    {id:'when', mail:'Arrival date', label:'What is the arrival date?', type:'date', required:true},
+    {id:'when', mail:'Arrival date', label:'What is the arrival date?', type:'date', required:true, max:'dayBeforeDsEnd', usReturn:true},
     {id:'flight', mail:'Flight number', label:'What is the flight number?', type:'text', required:true},
     {id:'landTime', mail:'Landing time', label:'What time do you land?', type:'time', required:true}
   ]
@@ -1405,6 +1405,11 @@ function fieldValueAsk(t, field){
 function fieldLimit(field, edge){
   return field[edge] ? boundDate(field[edge]) : '';
 }
+function usReturnWarning(endIso){
+  const shown = longDate(endIso);
+  return 'You cannot come back into the U.S. after your program ends on ' + shown + '. You will not be allowed back into the country. Pick a date before ' + shown + '.';
+}
+const MISSING_END_WARNING = 'Your return date must be before your program end date on your DS-2019.';
 function fieldError(t, field){
   if(!fieldShown(t, field)) return '';
   const value = fieldValueAsk(t, field);
@@ -1412,14 +1417,27 @@ function fieldError(t, field){
   if(field.required && !asText(value)) return 'Required';
   if(field.must && asText(value) && value !== field.must) return field.deny || 'Ask your manager first.';
   if(field.type === 'date' && value && /^\d{4}-\d{2}-\d{2}$/.test(value)){
+    if(field.notPast && value < todayIso()) return 'That date is in the past. Pick today or a later date.';
+    if(field.usReturn){
+      const end = rosterIso('dsEnd');
+      if(end && value >= end) return usReturnWarning(end);
+    }
+    if(field.after){
+      const other = fieldValueAsk(t, {id:field.after});
+      if(/^\d{4}-\d{2}-\d{2}$/.test(other) && value <= other) return 'Your return date must be after the day you leave. Pick a later date.';
+    }
     const min = fieldLimit(field, 'min');
     const max = fieldLimit(field, 'max');
     if(min && value < min) return 'Pick a later date';
-    if(max && value > max){
-      if(field.max === 'dayBeforeDsEnd') return 'Your return date must be before your program end date';
-      return 'That date is more than 30 days after your program end date';
-    }
+    if(max && value > max) return 'That date is more than 30 days after your program end date';
   }
+  return '';
+}
+function dateNotice(t, field){
+  if(!field) return '';
+  const err = fieldError(t, field);
+  if((field.usReturn || field.notPast) && err && err !== 'Required') return err;
+  if(field.usReturn && !rosterIso('dsEnd')) return MISSING_END_WARNING;
   return '';
 }
 function askReady(t, spec){
@@ -1567,7 +1585,10 @@ function askHtml(t){
     const value = fieldValueAsk(t, field);
     const req = field.required ? ' <span class="req">Required</span>' : '';
     const err = fieldError(t, field);
-    const errHtml = err && err !== 'Required' ? '<span class="askerr">' + esc(err) + '</span>' : '';
+    const notice = dateNotice(t, field);
+    const errHtml = notice
+      ? '<p class="askwarn" role="alert"><strong>Warning</strong> ' + esc(notice) + '</p>'
+      : (err && err !== 'Required' ? '<span class="askerr">' + esc(err) + '</span>' : '');
     if(field.type === 'choice'){
       const buttons = field.options.map(opt => {
         const on = value === opt ? ' aria-pressed="true"' : ' aria-pressed="false"';
@@ -2024,6 +2045,32 @@ document.addEventListener('input', e => {
   const spec = builderFor(t);
   const btn = document.getElementById('asksend');
   if(btn) btn.disabled = !askReady(t, spec);
+  if(spec) spec.fields.forEach(field => {
+    if(field.type !== 'date') return;
+    const input = document.querySelector ? document.querySelector('[data-ask="' + field.id + '"]') : null;
+    if(!input || !input.parentNode) return;
+    const notice = dateNotice(t, field);
+    let warn = input.parentNode.querySelector ? input.parentNode.querySelector('.askwarn') : null;
+    if(!notice){
+      if(warn && warn.remove) warn.remove();
+      return;
+    }
+    if(!warn && document.createElement){
+      warn = document.createElement('p');
+      warn.className = 'askwarn';
+      warn.setAttribute('role', 'alert');
+      if(input.insertAdjacentElement) input.insertAdjacentElement('afterend', warn);
+    }
+    if(warn){
+      warn.hidden = false;
+      warn.innerHTML = '<strong>Warning</strong> ' + esc(notice);
+    }
+  });
+});
+document.addEventListener('change', e => {
+  const el = e.target && e.target.closest && e.target.closest('[data-ask]');
+  if(!el || el.type !== 'date') return;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
 });
 document.addEventListener('click', e => {
   const check = e.target && e.target.closest && e.target.closest('[data-ask-check]');

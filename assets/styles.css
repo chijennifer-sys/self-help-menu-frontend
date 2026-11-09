@@ -417,6 +417,8 @@ body.locked .ask h1{opacity:.85}
 .askq input{font:inherit; font-size:16.5px; color:#303030; background:#fff; border:1px solid #303030; min-height:44px; padding:8px 12px}
 .req{color:var(--chi); font-weight:700}
 .askerr, .asknote{color:var(--chi); font-size:16px; line-height:1.45}
+.askwarn{display:block; margin:0; padding:12px 14px; background:var(--chi-soft); border-left:3px solid var(--chi); color:var(--ink); font-size:16px; line-height:1.45}
+.askwarn strong{display:block; margin-bottom:4px}
 .choices{display:flex; flex-wrap:wrap; gap:8px}
 .choice{border:1px solid #303030; background:#fff; color:#303030; min-height:44px; padding:8px 12px; font:inherit; font-size:16px}
 .choice[aria-pressed="true"]{background:var(--chi); color:#fff; border-color:var(--chi); font-weight:700}
