@@ -2171,3 +2171,41 @@ test('every tile slug opens after login and a bad slug opens the menu', async ()
   assert.equal(bad.els.view.innerHTML.includes('Copy link to this tile'), false);
   assert.equal(new URL(bad.history.url, 'https://example.test').searchParams.get('tile'), null);
 });
+
+test('fifteen student journeys land on a concrete next step', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a journey must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    employer: 'Aramark', location: 'Ocean City, NJ', season: 'Summer 2026',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', country: 'Peru'
+  });
+  const journeys = [
+    ['I lost my passport or another document', /1-800-432-4643, ext\. 0/],
+    ['I was in an accident', /1-855-731-9445/],
+    ['I am not getting enough hours', /15 hours/],
+    ['I want to go home early', /tally\.so\/r\/pbLbZP/],
+    ['Can I travel inside or outside the United States', /Request a travel signature 2 weeks ahead/],
+    ['My Social Security card has not come', /CHI does not receive the card/],
+    ['My housing when I land', /Call 911/],
+    ['I am sick or I am hurt', /CHI does not decide the claim/],
+    ['How do I get a second job approved', /written CHI approval/],
+    ['Where do I enter my visa results', /Do not book a flight until the visa is in your passport/],
+    ['How do I get my final paycheck', /There is no CHI address/],
+    ['How do I claim my tax overages back', /CHI does not forward mail/],
+    ['I am struggling or homesick', /988/],
+    ['Where do I go on my first day', /Do not go home and wait/],
+    ['How do I extend my insurance for my travel period', /50 dollars/]
+  ];
+  assert.equal(journeys.length, 15);
+  journeys.forEach(([q, re]) => {
+    page.sandbox.openQuestion(q);
+    assert.match(page.els.view.innerHTML, re, q);
+    assert.equal(/West End|Anchorage Court|San Rafael/i.test(page.els.view.innerHTML), false, q);
+  });
+  page.sandbox.openQuestion('How do I get a second job approved');
+  assert.equal(/72 hours|about a week/i.test(page.els.view.innerHTML), false);
+});
