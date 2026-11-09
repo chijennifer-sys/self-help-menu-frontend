@@ -64,8 +64,12 @@ function safeEmailMask(v){
   return maskEmail(s);
 }
 
+function realDate(v){
+  const d = D(v);
+  return d && !isNaN(d.getTime()) ? d : null;
+}
 function enrich(p){
-  const st = D(p.dsStart), en = D(p.dsEnd), ar = D(p.arrival);
+  const st = realDate(p.dsStart), en = realDate(p.dsEnd), ar = realDate(p.arrival);
   const day = st ? days(TODAY, st) : null;
   const len = (st && en) ? days(en, st) : null;
   const m = {...p};
@@ -358,6 +362,18 @@ function fieldValue(k){
     if(key && typeof CHI_TEAM!=='undefined' && CHI_TEAM[key]) return CHI_TEAM[key].short;
     if(typeof looksLikeAgencyCode==='function' && looksLikeAgencyCode(v)) return '';
     return v;
+  }
+  if(k==='returnee'){
+    const s = v.toLowerCase();
+    if(s === 'yes' || s === 'y' || s === 'true' || s === 'returnee') return 'Yes';
+    return '';
+  }
+  if(k==='day' || k==='len' || k==='daysLeft'){
+    const n = Number(v);
+    if(!isFinite(n)) return '';
+    if(k==='day' && (n < 0 || (ME.daysLeft !== null && ME.daysLeft < 0))) return '';
+    if(k==='len' && (n <= 0 || ME.day === null || ME.day < 0 || (ME.daysLeft !== null && ME.daysLeft < 0))) return '';
+    return String(n);
   }
   return v;
 }

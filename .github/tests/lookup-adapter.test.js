@@ -1907,3 +1907,49 @@ test('tile links open after login and carry no student data', async () => {
     assert.ok(docs.includes(q), q);
   });
 });
+
+test('personalized lines stay readable with missing or edge-case roster data', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('edge-case copy must not look anyone up'); }
+  });
+  const people = {
+    'missing fields': { sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace' },
+    'before arrival': {
+      sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+      employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
+      dsStart: '2026-12-01', dsEnd: '2027-03-15', season: 'Winter 2026-27', country: 'Peru'
+    },
+    'program ended': {
+      sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+      employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
+      dsStart: '2025-06-01', dsEnd: '2025-09-15', arrival: '2025-05-28',
+      lastDayWorked: '2025-09-01', season: 'Summer 2025'
+    },
+    returnee: {
+      sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+      employer: 'Aramark', country: 'Peru', season: 'Summer 2026',
+      dsStart: '2026-06-01', dsEnd: '2026-09-15', returnee: 'Yes', timesParticipated: '2'
+    }
+  };
+  const bad = /undefined|NaN|Invalid Date|\{[a-zA-Z]|on day\s+of|<b>\s*<\/b>|built their season/i;
+  Object.keys(people).forEach(label => {
+    page.sandbox.setMe(people[label]);
+    Object.keys(page.sandbox.TILE_SLUGS).forEach(q => {
+      page.sandbox.openQuestion(q);
+      const html = page.els.view.innerHTML;
+      assert.equal(bad.test(html), false, label + ' / ' + q);
+    });
+  });
+  page.sandbox.setMe(people.returnee);
+  page.sandbox.openQuestion('Can I come back next year');
+  assert.match(page.els.view.innerHTML, /You have done a CHI season before/);
+  assert.match(page.els.view.innerHTML, /J-1 programs before this one: <b>2<\/b>/);
+  page.sandbox.setMe(people['before arrival']);
+  page.sandbox.openQuestion('I am not getting enough hours');
+  assert.equal(/on day -/.test(page.els.view.innerHTML), false);
+  page.sandbox.setMe(people['missing fields']);
+  page.sandbox.openQuestion('I need to change my start date');
+  assert.equal(page.els.view.innerHTML.includes('planned the season'), false);
+});

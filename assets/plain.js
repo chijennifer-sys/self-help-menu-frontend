@@ -20,11 +20,11 @@ const PLAIN = {
 'I need to change my start date': {
   lead:'Your employer must agree before any date can move.',
   steps:['Use the email form on this page as soon as you know.','A few days late can sometimes be arranged.','A few weeks late often cannot.','Print a correction letter and carry it with your DS-2019.'],
-  watch:'Do not travel with only one of the two papers.'
+  watch:'Carry the DS-2019 and the new-date letter together.'
 },
 'Can CHI check my housing is not a scam': {
-  lead:'Yes. Send the listing before you pay anything.',
-  steps:['Send the address, the landlord name, and the phone number.','The check is free and takes about a day.','Ask for a written lease before you pay.','Already paid? Use Still need help at the bottom.'],
+  lead:'Yes. Send the ad before you pay anything.',
+  steps:['Send the address, the landlord name, and the phone number.','CHI looks at it for free. It takes about a day.','Ask for a written lease before you pay.','Already paid? Use Still need help at the bottom.'],
   watch:'CHI cannot get a deposit back after the money is gone.'
 },
 'How early can I arrive': {
@@ -34,17 +34,17 @@ const PLAIN = {
 },
 'Where do I enter my visa results': {
   lead:'Enter the result at wt.chinet.org the day you leave the embassy.',
-  steps:['Open My Profile, then Visa.','Approved: add the date and a photo of the visa.','Denied: enter the date and write Try again if you want another try.','221(g): write the slip color in the comments.'],
+  steps:['Open My Profile, then Visa.','Approved: add the date and a photo of the visa.','Denied: enter the date. Write Try again if you want another try.','If they keep your passport, write the slip color.'],
   watch:'Do not book a flight until the visa is in your passport.'
 },
 'Where do I enter my flight details': {
   lead:'Enter your flight at wt.chinet.org as soon as you book.',
-  steps:['Use the final U.S. airport, not a layover.','Save each flight before you add the next one.','Put the arrival time in the arrival section only.','Landing late? Stay at a hotel and travel in daylight.'],
+  steps:['Use the last U.S. airport, not a stop on the way.','Save each flight before you add the next one.','Put the arrival time in the arrival section only.','Landing late? Stay at a hotel and travel in daylight.'],
   watch:'Most employers do not pick you up from the airport.'
 },
 'Where do I verify my housing': {
   lead:'Verify housing at least 4 weeks before you arrive.',
-  steps:['Do this at wt.chinet.org, even for employer housing.','Include the room or unit number.','Use the same address for SEVIS.','Living with family? They sign a Liability Release.'],
+  steps:['Do this at wt.chinet.org, even for employer housing.','Include the room or unit number.','Use this same address for SEVIS, the government record.','Living with family? They sign the Liability Release form.'],
   watch:'Without this address, CHI cannot activate SEVIS.'
 },
 'What airport should I fly into': {
@@ -59,7 +59,7 @@ const PLAIN = {
 },
 'WhatsApp groups for my employer': {
   lead:'CHI adds you to the group closer to your start.',
-  steps:['Use the join link when it is on this page.','No link yet? Check again closer to your start date.','Changed your SIM? Send the new number at the bottom.','Pay and documents do not go in the group.'],
+  steps:['Use the join link when it is on this page.','No link yet? Check again closer to your start date.','New phone number? Send it with Still need help.','Pay and documents do not go in the group.'],
   watch:'Your coordinator replies Monday to Friday, 9am to 5pm Eastern.'
 },
 'Where is my job description or offer': {
@@ -108,18 +108,18 @@ const PLAIN = {
   watch:'You need the I-94 for Social Security and for the I-9.'
 },
 'How do I validate my SEVIS record': {
-  lead:'Validate at wt.chinet.org within 3 days of arrival.',
-  steps:['Enter your full U.S. address and room number.','Do not use a P.O. box.','No U.S. phone yet? Use your employer number.','Then wait for the activation email, usually 3 to 7 days.'],
+  lead:'Enter your U.S. address at wt.chinet.org within 3 days of arrival.',
+  steps:['This step is called SEVIS. CHI sends it to the government.','Use the street address and the room number.','Do not use a post office box.','Wait for the email that says your record is active.'],
   watch:'Miss this and your program can be cancelled.'
 },
 'How do I apply for my Social Security Number': {
-  lead:'Go to the office only after the activation email.',
+  lead:'Go to the office only after the email that says your record is active.',
   steps:['Bring your passport, visa, DS-2019, I-94, and job offer.','Also bring your sponsor letter.','Ask them to mail the card to your housing.','The card usually arrives in 7 to 14 business days.'],
   watch:'You can work with the receipt before the card arrives.'
 },
 'How do I fill in my employment paperwork': {
   lead:'Bring your passport, DS-2019, and printed I-94.',
-  steps:['On the I-9, use the spelling in your passport.','No Social Security number yet? Ask your employer first.','You can enter 999-99-9999. Never guess a real number.','On the W-4, choose Single. In step 4(c), write Nonresident Alien.'],
+  steps:['On the I-9 work form, use your passport spelling.','No Social Security number yet? Ask your employer first.','You can enter 999-99-9999. Never guess a real number.','On the W-4 tax form, choose Single. In step 4(c), write Nonresident Alien.'],
   watch:'Never write Exempt on the W-4.'
 },
 'How do I get a US phone number': {
@@ -170,12 +170,12 @@ const PLAIN = {
 'I did not get my paycheck': {
   lead:'Check the address payroll has. That is the usual cause.',
   steps:['Keep a photo of the schedule and clock-in times.','Tell payroll the same week, in writing.','Wrong name? Ask them to reissue the check.','After you leave, contact your employer. Not CHI.'],
-  watch:'A bounced check: do not deposit another until you email your coordinator.'
+  watch:'If the bank rejects the check, email your coordinator before you try again.'
 },
 'My time off was refused': {
   lead:'Only your employer can approve time off. CHI cannot.',
   steps:['Ask at least 2 weeks ahead, in a message.','No is a possible answer.','Sick? Call your manager at least 2 hours before the shift.','Offer to swap the shift. Your manager must approve the swap.'],
-  watch:'A no-call, no-show can end the job the same day.'
+  watch:'Missing a shift and not calling can end the job that day.'
 },
 'I have a problem with my manager': {
   lead:'Try your manager, then HR, before you write to CHI.',
@@ -190,7 +190,7 @@ const PLAIN = {
 'I was sent home from a shift': {
   lead:'One bad shift is not the same as losing the job.',
   steps:['Ask in writing: am I on next week schedule?','If you are still on it, this is one bad shift.','Not on the schedule? Email CHI the same day.','You then have 10 days to be placed.'],
-  watch:'A no-call, no-show can end the job the same day.'
+  watch:'Missing a shift and not calling can end the job that day.'
 },
 'I lost my job': {
   lead:'Do not start a new job until CHI approves it in writing.',
@@ -230,7 +230,7 @@ const PLAIN = {
 'I am sick or I am hurt': {
   lead:'Not an emergency? Do not start at the emergency room.',
   steps:['Start with free Teladoc in the USA.','Call 1-800-835-2362. ZIP code 46208.','A walk-in clinic is 0 dollars. Urgent care is 25.','Do not pay a bill yourself. Send it through the Student Zone.'],
-  watch:'A real emergency: call 911. An ER visit has a 350 dollar deductible.'
+  watch:'A real emergency: call 911. At an ER you pay the first 350 dollars.'
 },
 'I want to see a doctor': {
   lead:'Start with free Teladoc, after your cover has started.',
@@ -284,7 +284,7 @@ const PLAIN = {
 },
 'Can I travel inside or outside the United States': {
   lead:'Travel inside the U.S. is fine. Leaving needs a travel signature.',
-  steps:['Your visa must say Entries M, not S.','Your return flight must land before your program end date.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.'],
+  steps:['Entries M means you can enter more than once. S means once.','Your return flight must land before your program end date.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.'],
   watch:'Puerto Rico needs no signature. A cruise that stops abroad does.'
 },
 'I am being evicted': {
@@ -309,8 +309,8 @@ const PLAIN = {
 },
 'Can I travel before I go home': {
   lead:'A trip outside the U.S. must bring you back before your program end date.',
-  steps:['Check that your visa says Entries M.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.','In the grace period you may travel inside the U.S. only.'],
-  watch:'Leave the country in the grace period, and you cannot come back.'
+  steps:['Entries M means more than one entry. S means one entry.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.','After your last work day, travel inside the U.S. only.'],
+  watch:'Leave during the grace period and you cannot come back.'
 },
 'How do I extend my insurance for my travel period': {
   lead:'Cover ends on your program end date. The grace period does not extend it.',
@@ -334,7 +334,7 @@ const PLAIN = {
 },
 'Can I come back next year': {
   lead:'Yes, if you are still a full-time student. CHI has a 3-year maximum.',
-  steps:['Finish this season in good standing.','Do not ask the employer for your own offer.','Sign a letter of intent for the full season.','Then use the email form on this page.'],
+  steps:['Finish this season with no open problems.','Do not ask the employer for your own offer.','Sign a letter of intent for the full season.','Then use the email form on this page.'],
   watch:'CHI will not issue a DS-2019 for a job you arranged yourself.'
 },
 'Help me find housing': {
