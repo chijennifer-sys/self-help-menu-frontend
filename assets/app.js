@@ -93,6 +93,12 @@ function enrich(p){
   m.plattsburghNote = /plattsburgh/i.test(asText(p.ssaOfficeName))
     ? 'Plattsburgh is about an hour away. Apply online first. Book only after the activation email, on a day your manager agrees. Share the ride with coworkers when you can.'
     : '';
+  if(/^\d{4}-\d{2}-\d{2}/.test(String(p.embassyInterview || ''))) m.embassyInterviewIso = String(p.embassyInterview).slice(0, 10);
+  if(typeof coordinatorFromRecord === 'function'){
+    const coordinatorKey = coordinatorFromRecord(p);
+    if(coordinatorKey && coordinatorKey !== 'jenn') m.coordinator = coordinatorKey;
+    else delete m.coordinator;
+  }
   ['sevisValidationDate','embassyInterview','dateVisaReceived','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd'].forEach(k => {
     if(m[k] && /^\d{4}-\d{2}-\d{2}/.test(String(m[k]))) m[k] = FMT(D(String(m[k]).slice(0,10)));
   });
@@ -792,6 +798,353 @@ function orientationScheduleHtml(){
   return html;
 }
 
+const askState = {};
+const CHIWT = 'chiwt@chinet.org';
+
+function shortFmt(d){
+  if(!d) return '';
+  return d.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' });
+}
+function isoOf(d){
+  if(!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+function rosterIso(key){
+  const raw = asText(ME && ME[key]);
+  return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : '';
+}
+
+const ASK_FORMS = {};
+function addAsk(questions, spec){
+  questions.forEach(q => { ASK_FORMS[q] = spec; });
+}
+addAsk(['How do I extend my insurance for my travel period'], {
+  topic:'Insurance Extension Request', to:'chiwt', cc:'coordinator',
+  rules:[
+    'Ask before your program end date.',
+    'The fee is 50 dollars. Pay by card before your program end date.',
+    'Do not put a card number in this email.',
+    'The last day of cover can be at most 30 days after your program end date.'
+  ],
+  fixed:['Fee: 50 dollars. Pay by card before your program end date.'],
+  fields:[
+    {id:'coverEnd', mail:'Coverage end date', label:'What date should the cover end?', type:'date', required:true, min:'dsEndPlus1', max:'dsEndPlus30'},
+    {id:'where', mail:'Where you will travel', label:'Which U.S. cities or states will you visit?', type:'text', required:true},
+    {id:'depart', mail:'Departure date from the USA', label:'What date do you leave the USA?', type:'date', required:true}
+  ]
+});
+addAsk(['Can I travel inside or outside the United States', 'Can I travel before I go home'], {
+  topic:'Travel Signature Request', to:'chiwt', cc:'coordinator',
+  rules:['Request a travel signature 2 weeks ahead.'],
+  fixed:['Request a travel signature 2 weeks ahead.'],
+  fields:[
+    {id:'where', mail:'Destination', label:'Where are you going?', type:'text', required:true},
+    {id:'leave', mail:'Date you leave the United States', label:'What date do you leave the United States?', type:'date', required:true},
+    {id:'back', mail:'Date you come back', label:'What date do you come back?', type:'date', required:true},
+    {id:'how', mail:'How CHI gets the DS-2019', label:'How will you get the DS-2019 to CHI?', type:'choice', required:true, options:['I will email a photo of the full page', 'I will pick it up']}
+  ]
+});
+addAsk(['I want to go home early'], {
+  topic:'Shorten program', to:'coordinator', keepAct:true,
+  fields:[
+    {id:'why', mail:'Reason', label:'Why do you want to go home early?', type:'text', required:true},
+    {id:'firstDay', mail:'First day of work', label:'What was your first day of work?', type:'date', required:true},
+    {id:'lastDay', mail:'Final day of work', label:'What is your final day of work?', type:'date', required:true},
+    {id:'told', mail:'Did you tell your employer and give one week notice?', label:'Did you tell your employer and give one week notice?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'city', mail:'Departure city', label:'Which city do you fly from?', type:'text', required:true},
+    {id:'depart', mail:'Departure date', label:'What date do you fly?', type:'date', required:true}
+  ]
+});
+addAsk(['I need to change my start date'], {
+  topic:'Program date change', to:'coordinator',
+  fields:[
+    {id:'origStart', mail:'Original start date', label:'Original start date', type:'date', required:true, prefill:'dsStart', lock:true},
+    {id:'origEnd', mail:'Original end date', label:'Original end date', type:'date', required:true, prefill:'dsEnd', lock:true},
+    {id:'newStart', mail:'New start date', label:'What new start date do you need?', type:'date', required:true},
+    {id:'newEnd', mail:'New end date', label:'What new end date do you need?', type:'date', required:true},
+    {id:'reason', mail:'Reason', label:'Why do the dates need to change?', type:'text', required:true}
+  ]
+});
+addAsk(['Where do I enter my visa results'], {
+  topic:'Visa status', to:'coordinator',
+  fields:[
+    {id:'interview', mail:'Embassy interview date', label:'What is your embassy interview date?', type:'date', required:true, prefill:'embassyInterviewIso'},
+    {id:'status', mail:'Status', label:'What is the visa status?', type:'choice', required:true, options:['Approved', 'Denied', 'Pending', 'Administrative processing']},
+    {id:'deniedOn', mail:'Date denied', label:'What date were you denied?', type:'date', required:true, when:{id:'status', value:'Denied'}},
+    {id:'deniedWhy', mail:'Reason given', label:'What reason did they give?', type:'text', required:true, quick:['Not given'], when:{id:'status', value:'Denied'}}
+  ]
+});
+addAsk(['When should I contact my employer'], {
+  topic:'Employer interview', to:'coordinator',
+  fields:[
+    {id:'date', mail:'Interview date', label:'What date is the interview?', type:'date', required:true},
+    {id:'time', mail:'Interview time', label:'What time is the interview?', type:'time', required:true},
+    {id:'who', mail:'Interviewer name', label:'What is the interviewer name?', type:'text', required:true},
+    {id:'platform', mail:'Platform', label:'Where is the interview?', type:'choice', required:true, options:['Zoom', 'Phone', 'WhatsApp', 'Other']}
+  ]
+});
+addAsk(['I have a problem with my manager'], {
+  topic:'Needs help', to:'coordinator',
+  fields:[
+    {id:'what', mail:'What happened', label:'What happened?', type:'text', required:true},
+    {id:'when', mail:'When it started', label:'When did it start?', type:'date', required:true},
+    {id:'told', mail:'Talked to manager', label:'Did you talk to your manager?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'help', mail:'Help needed', label:'What help do you need?', type:'text', required:true}
+  ]
+});
+addAsk(['I lost my job'], {
+  topic:'Lost job', to:'coordinator',
+  fields:[
+    {id:'why', mail:'Reason', label:'Why did the job end?', type:'text', required:true},
+    {id:'last', mail:'Last day worked', label:'What was your last day of work?', type:'date', required:true},
+    {id:'found', mail:'Found another job', label:'Have you found another job?', type:'choice', required:true, options:['Yes', 'No']}
+  ]
+});
+addAsk(['Where do I verify my housing'], {
+  topic:'Liability release', to:'chiwt', cc:'jennifer', withAct:true,
+  note:'Email the signed PDF to CHI. You must attach the file yourself. This draft does not attach it.',
+  fields:[
+    {id:'attach', mail:'Signed PDF', label:'Will you attach the signed PDF yourself?', type:'choice', required:true, options:['Yes']}
+  ]
+});
+addAsk(['There is a problem at my housing'], {
+  topic:'Housing problem', to:'coordinator',
+  fields:[
+    {id:'what', mail:'Problem', label:'What is the problem?', type:'choice', required:true, options:['Repair', 'Rent', 'Roommate', 'Other']},
+    {id:'when', mail:'When it started', label:'When did it start?', type:'date', required:true},
+    {id:'told', mail:'Wrote to the landlord', label:'Did you write to the landlord?', type:'choice', required:true, options:['Yes', 'No']}
+  ]
+});
+addAsk(['I did not get my paycheck'], {
+  topic:'Missing paycheck', to:'coordinator',
+  fields:[
+    {id:'what', mail:'What is wrong', label:'What is wrong with the pay?', type:'choice', required:true, options:['Missing pay', 'Wrong amount', 'Name on the check', 'Other']},
+    {id:'when', mail:'Pay date', label:'What was the pay date?', type:'date', required:true},
+    {id:'told', mail:'Told payroll', label:'Did you tell payroll?', type:'choice', required:true, options:['Yes', 'No']}
+  ]
+});
+addAsk(['I am not getting enough hours'], {
+  topic:'Hours cut', to:'coordinator',
+  fields:[
+    {id:'hours', mail:'Hours this week', label:'How many hours did you work this week?', type:'text', required:true},
+    {id:'weeks', mail:'Short weeks', label:'How many weeks were short?', type:'choice', required:true, options:['1', '2', '3 or more']},
+    {id:'when', mail:'Week of', label:'Which week should we look at?', type:'date', required:true}
+  ]
+});
+addAsk(['I am sick or I am hurt'], {
+  topic:'Sick or hurt', to:'coordinator',
+  fields:[
+    {id:'what', mail:'What is wrong', label:'What is wrong?', type:'text', required:true},
+    {id:'when', mail:'When it started', label:'When did it start?', type:'date', required:true},
+    {id:'where', mail:'Where you went', label:'Where did you go?', type:'choice', required:true, options:['Teladoc', 'Walk-in clinic', 'Urgent care', 'Emergency room', 'Not yet']},
+    {id:'work', mail:'Happened at work', label:'Did this happen at work?', type:'choice', required:true, options:['Yes', 'No']}
+  ]
+});
+addAsk(['I want to see a doctor'], {
+  topic:'Doctor visit', to:'coordinator',
+  fields:[
+    {id:'need', mail:'What you need', label:'What do you need?', type:'choice', required:true, options:['A doctor visit', 'A bill or claim', 'A prescription']},
+    {id:'when', mail:'Date', label:'What date was the visit?', type:'date', required:true},
+    {id:'paid', mail:'Already paid a bill', label:'Did you already pay a bill?', type:'choice', required:true, options:['Yes', 'No']}
+  ]
+});
+addAsk(['I lost my passport or another document'], {
+  topic:'Lost document', to:'coordinator',
+  fields:[
+    {id:'which', mail:'Document', label:'Which document is missing?', type:'choice', required:true, options:['Passport', 'DS-2019 form', 'Insurance card', 'Other']},
+    {id:'when', mail:'When you noticed', label:'When did you notice?', type:'date', required:true},
+    {id:'police', mail:'Police report', label:'Did you make a police report?', type:'choice', required:true, options:['Yes', 'No']}
+  ]
+});
+addAsk(['How do I get a second job approved'], {
+  topic:'Second job', to:'coordinator',
+  fields:[
+    {id:'employer', mail:'New employer', label:'What is the new employer name?', type:'text', required:true},
+    {id:'title', mail:'Job title', label:'What is the job title?', type:'text', required:true},
+    {id:'started', mail:'Already started', label:'Have you already started?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'when', mail:'Start date', label:'What is the start date?', type:'date', required:true}
+  ]
+});
+addAsk(['Where do I enter my flight details'], {
+  topic:'Flight change', to:'coordinator',
+  fields:[
+    {id:'what', mail:'What changed', label:'What changed?', type:'choice', required:true, options:['New flight', 'Late landing', 'No flight yet']},
+    {id:'when', mail:'Arrival date', label:'What is the arrival date?', type:'date', required:true},
+    {id:'flight', mail:'Flight number', label:'What is the flight number?', type:'text', required:true}
+  ]
+});
+addAsk(['I was in an accident'], {
+  topic:'Accident', to:'coordinator',
+  fields:[
+    {id:'where', mail:'Where it happened', label:'Where did it happen?', type:'choice', required:true, options:['At work', 'On the road', 'Other']},
+    {id:'when', mail:'Date', label:'What date did it happen?', type:'date', required:true},
+    {id:'told', mail:'Told your manager', label:'Did you tell your manager?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'what', mail:'What happened', label:'What happened?', type:'text', required:true}
+  ]
+});
+
+function builderFor(t){
+  return t && ASK_FORMS[t.q] || null;
+}
+function boundDate(specName){
+  const end = rosterIso('dsEnd');
+  if(!end || !D(end)) return '';
+  if(specName === 'dsEndPlus1') return isoOf(addDays(D(end), 1));
+  if(specName === 'dsEndPlus30') return isoOf(addDays(D(end), 30));
+  return '';
+}
+function fieldShown(t, field){
+  if(!field.when) return true;
+  return fieldValueAsk(t, {id:field.when.id}) === field.when.value;
+}
+function fieldValueAsk(t, field){
+  const bag = askState[t.q] || {};
+  if(Object.prototype.hasOwnProperty.call(bag, field.id)) return bag[field.id];
+  if(field.prefill){
+    if(field.prefill === 'embassyInterviewIso') return rosterIso('embassyInterviewIso');
+    return rosterIso(field.prefill);
+  }
+  return '';
+}
+function fieldLimit(field, edge){
+  return field[edge] ? boundDate(field[edge]) : '';
+}
+function fieldError(t, field){
+  if(!fieldShown(t, field)) return '';
+  const value = fieldValueAsk(t, field);
+  if(field.required && !asText(value)) return 'Required';
+  if(field.type === 'date' && value){
+    const min = fieldLimit(field, 'min');
+    const max = fieldLimit(field, 'max');
+    if(min && value < min) return 'Pick a later date';
+    if(max && value > max) return 'That date is more than 30 days after your program end date';
+  }
+  return '';
+}
+function askReady(t, spec){
+  return spec.fields.every(field => !fieldShown(t, field) || !fieldError(t, field));
+}
+function askSubject(t, spec){
+  const season = asText(ME && ME.season) || 'No season';
+  const sid = asText(ME && ME.sid) || 'No Student ID';
+  const name = asText(ME && ME.name) || 'No name';
+  let subject = spec.topic + ' | ' + season + ' | ' + sid + ' | ' + name;
+  if((askState[t.q] || {}).__urgent === 'Yes') subject = '⏰ Time Sensitive | ' + subject;
+  return subject;
+}
+function rosterMailLines(){
+  const lines = [];
+  const put = (label, value) => lines.push(label + ': ' + (asText(value) || 'Not on file'));
+  put('Participant Name', ME && ME.name);
+  put('Student ID', ME && ME.sid);
+  put('Season', ME && ME.season);
+  put('Employer', ME && ME.employer);
+  put('Location', ME && ME.location);
+  put('Position/Job Title', ME && ME.job);
+  const start = rosterIso('dsStart');
+  const end = rosterIso('dsEnd');
+  put('DS start', start ? shortFmt(D(start)) : '');
+  put('DS end', end ? shortFmt(D(end)) : '');
+  return lines;
+}
+function askBody(t, spec){
+  const lines = ['Hello,', ''].concat(rosterMailLines());
+  lines.push('', 'Student ID: ' + (asText(ME && ME.sid) || 'Not on file'), '');
+  spec.fields.forEach(field => {
+    if(!fieldShown(t, field)) return;
+    let value = fieldValueAsk(t, field);
+    if(field.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) value = shortFmt(D(value));
+    lines.push((field.mail || field.label) + ': ' + (value || 'Not on file'));
+  });
+  (spec.fixed || []).forEach(line => lines.push(line));
+  if(spec.note) lines.push(spec.note);
+  return lines.join('\n');
+}
+function askMailUrl(t, spec){
+  const to = spec.to === 'chiwt' ? CHIWT : CHI_TEAM[assignedCoordinator()].email;
+  let cc = '';
+  if(spec.cc === 'coordinator') cc = CHI_TEAM[assignedCoordinator()].email;
+  else if(spec.cc === 'jennifer') cc = CHI_TEAM.jenn.email;
+  let url = 'mailto:' + to
+    + '?subject=' + encodeURIComponent(askSubject(t, spec))
+    + '&body=' + encodeURIComponent(askBody(t, spec));
+  if(cc) url += '&cc=' + encodeURIComponent(cc);
+  return url;
+}
+function setAskAnswer(id, value){
+  const t = T[state.leaf];
+  if(!t) return;
+  askState[t.q] = askState[t.q] || {};
+  askState[t.q][id] = value;
+  render();
+}
+function openAskMail(){
+  const t = T[state.leaf];
+  const spec = builderFor(t);
+  if(!t || !spec || !askReady(t, spec)) return false;
+  openMailDraft(askMailUrl(t, spec));
+  return true;
+}
+globalThis.ASK_FORMS = ASK_FORMS;
+
+function askHtml(t){
+  const spec = builderFor(t);
+  if(!spec || !ME) return '';
+  const bag = askState[t.q] || {};
+  const urgent = bag.__urgent === 'Yes';
+  const fields = spec.fields.map(field => {
+    if(!fieldShown(t, field)) return '';
+    const value = fieldValueAsk(t, field);
+    const req = field.required ? ' <span class="req">Required</span>' : '';
+    const err = fieldError(t, field);
+    const errHtml = err && err !== 'Required' ? '<span class="askerr">' + esc(err) + '</span>' : '';
+    if(field.type === 'choice'){
+      const buttons = field.options.map(opt => {
+        const on = value === opt ? ' aria-pressed="true"' : ' aria-pressed="false"';
+        return '<button type="button" class="choice" data-ask-choice="' + esc(field.id) + '" data-ask-value="' + esc(opt) + '"' + on + '>' + esc(opt) + '</button>';
+      }).join('');
+      return '<fieldset class="askq"><legend>' + esc(field.label) + req + '</legend><div class="choices">' + buttons + '</div>' + errHtml + '</fieldset>';
+    }
+    const type = field.type === 'date' ? 'date' : field.type === 'time' ? 'time' : 'text';
+    const min = fieldLimit(field, 'min');
+    const max = fieldLimit(field, 'max');
+    const quick = (field.quick || []).map(opt =>
+      '<button type="button" class="choice" data-ask-choice="' + esc(field.id) + '" data-ask-value="' + esc(opt) + '">' + esc(opt) + '</button>'
+    ).join('');
+    return '<label class="askq">' + esc(field.label) + req
+      + '<input data-ask="' + esc(field.id) + '" type="' + type + '" value="' + esc(value) + '"'
+      + (min ? ' min="' + esc(min) + '"' : '')
+      + (max ? ' max="' + esc(max) + '"' : '')
+      + (field.lock ? ' readonly' : '')
+      + '>' + (quick ? '<span class="choices">' + quick + '</span>' : '') + errHtml + '</label>';
+  }).join('');
+  const ready = askReady(t, spec);
+  const end = rosterIso('dsEnd');
+  const maxText = end ? shortFmt(D(boundDate('dsEndPlus30'))) : '';
+  const rules = (spec.rules || []).map(line => '<li>' + esc(line) + (line.indexOf('30 days') >= 0 && maxText ? ' The last allowed day is ' + esc(maxText) + '.' : '') + '</li>').join('');
+  const facts = rosterMailLines().map(line => '<li>' + esc(line) + '</li>').join('');
+  return '<section class="builder">'
+    + (rules ? '<ul class="rules">' + rules + '</ul>' : '')
+    + (spec.note ? '<p class="asknote">' + esc(spec.note) + '</p>' : '')
+    + '<div class="rosterbox"><p class="asktag">From your record</p><ul>' + facts + '</ul></div>'
+    + fields
+    + '<fieldset class="askq"><legend>Time sensitive?</legend><div class="choices">'
+    + '<button type="button" class="choice" data-ask-choice="__urgent" data-ask-value="Yes"' + (urgent ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>Yes</button>'
+    + '<button type="button" class="choice" data-ask-choice="__urgent" data-ask-value="No"' + (!urgent ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>No</button>'
+    + '</div></fieldset>'
+    + '<button type="button" class="act" id="asksend" data-ask-send="1"' + (ready ? '' : ' disabled') + '>Review my email</button>'
+    + '</section>';
+}
+
+function firstScreenText(t){
+  const p = t && t.plain;
+  const bits = p ? [p.lead].concat(p.steps || [], p.watch || []) : [t.lead].concat((t && t.body) || []);
+  return bits.filter(Boolean).map(s => String(s).replace(/<[^>]+>/g, ' ')).join(' ');
+}
+
 function leafBody(t){
   return t.body.map(p => {
     if(t.q === 'My visa appointment' && String(p).indexOf('Is your appointment after your start date') === 0){
@@ -845,6 +1198,11 @@ function renderLeaf(){
     if(q.length) url += '?' + q.join('&');
   }
   const youHtml = tileYou(t);
+  const spec = builderFor(t);
+  const showAct = !spec || spec.keepAct || spec.withAct;
+  const actHtml = !showAct ? '' : url
+    ? '<a class="act" href="' + url + '" target="_blank" rel="noopener">' + esc(t.act.label) + '</a>'
+    : '<button class="act' + (t.act.kind === 'answer' ? ' ghost' : '') + '" data-act="' + t.act.kind + '">' + esc(t.act.label) + '</button>';
   view.innerHTML = `
     <div class="crumb"><button data-go="${state.q?'search':'stage'}" data-stage="${t.s}">${back} ${esc(state.q?'Results':s.t)}</button></div>
     <article class="leaf">
@@ -853,19 +1211,27 @@ function renderLeaf(){
         <div class="leaf-meta"><span class="pill ${t.r}">${t.r}</span><span style="font-size:12.5px;color:var(--ink-3)">${esc(ROUTE_D[t.r])}</span></div>
       </div>
       <div class="leaf-b">
-        <p class="lead">${fillSmart(t.lead)}</p>
         ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
-        ${t.q === 'When is the next online orientation' ? orientationScheduleHtml() : ''}
-        ${leafBody(t)}
-        ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${fillSmart(t.clock.t)}</div>` : ''}
-        ${t.hz ? `<div class="note" style="background:var(--ground);border-left-color:var(--s${STAGES.find(x=>x.key===t.s).n})">Housing has tiles at every point in your programme. Search the word housing and they all come up.</div>` : ''}
-        ${t.sample ? `<div class="sample">
-          <div class="sample-h"><span class="sample-l">${esc(t.sample.title)}</span><button class="copy" data-copy="${T.indexOf(t)}">Copy</button></div>
-          <div class="sample-t">${t.sample.lines.map(l=>fillSmart(l)||'&nbsp;').join('<br>')}</div>
-        </div>` : ''}
-        ${t.need && t.need.length ? `<div class="need"><h4>What your CHI team needs from you</h4><ul>${t.need.map(n=>fillSmart(n)).filter(Boolean).map(n=>`<li>${n}</li>`).join('')}</ul></div>` : ''}
-        ${url ? `<a class="act" href="${url}" target="_blank" rel="noopener">${esc(t.act.label)}</a>`
-              : `<button class="act${t.act.kind==='answer'?' ghost':''}" data-act="${t.act.kind}">${esc(t.act.label)}</button>`}
+        <div class="screen">
+          <p class="lead">${fillSmart((t.plain && t.plain.lead) || t.lead)}</p>
+          ${(t.plain && t.plain.steps && t.plain.steps.length) ? `<ol class="steps">${t.plain.steps.map(step => { const text = fillSmart(step); return text ? '<li>' + text + '</li>' : ''; }).join('')}</ol>` : ''}
+          ${(t.plain && t.plain.watch) ? `<p class="watch"><span class="wtag">Watch out</span> ${fillSmart(t.plain.watch)}</p>` : ''}
+        </div>
+        ${t.q === 'When is the next online orientation' ? '<div class="sched">' + orientationScheduleHtml() + '</div>' : ''}
+        <details class="more">
+          <summary>More details</summary>
+          ${fillSmart(t.lead) ? '<p>' + fillSmart(t.lead) + '</p>' : ''}
+          ${leafBody(t)}
+          ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${fillSmart(t.clock.t)}</div>` : ''}
+          ${t.hz ? `<div class="note">Housing has tiles at every point in your program. Search the word housing and they all come up.</div>` : ''}
+          ${t.sample ? `<div class="sample">
+            <div class="sample-h"><span class="sample-l">${esc(t.sample.title)}</span><button class="copy" data-copy="${T.indexOf(t)}">Copy</button></div>
+            <div class="sample-t">${t.sample.lines.map(l=>fillSmart(l)||'&nbsp;').join('<br>')}</div>
+          </div>` : ''}
+          ${t.need && t.need.length ? `<div class="need"><h4>What to have ready</h4><ul>${t.need.map(n=>fillSmart(n)).filter(Boolean).map(n=>`<li>${n}</li>`).join('')}</ul></div>` : ''}
+        </details>
+        ${askHtml(t)}
+        ${actHtml}
       </div>
     </article>`;
 }
@@ -1139,7 +1505,28 @@ async function doLookup(){
 }
 
 /* ---------- events ---------- */
+document.addEventListener('input', e => {
+  const el = e.target && e.target.closest && e.target.closest('[data-ask]');
+  if(!el || state.leaf === null || !T[state.leaf]) return;
+  const t = T[state.leaf];
+  askState[t.q] = askState[t.q] || {};
+  askState[t.q][el.dataset.ask] = el.value;
+  const spec = builderFor(t);
+  const btn = document.getElementById('asksend');
+  if(btn) btn.disabled = !askReady(t, spec);
+});
 document.addEventListener('click', e => {
+  const choice = e.target && e.target.closest && e.target.closest('[data-ask-choice]');
+  if(choice){
+    setAskAnswer(choice.dataset.askChoice, choice.dataset.askValue);
+    return;
+  }
+  const send = e.target && e.target.closest && e.target.closest('[data-ask-send]');
+  if(send){
+    if(send.disabled) return;
+    openAskMail();
+    return;
+  }
   const cp = e.target.closest('[data-copy]');
   if(cp){
     const t = T[+cp.dataset.copy];
