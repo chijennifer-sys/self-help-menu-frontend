@@ -397,6 +397,14 @@ body.locked .ask h1{opacity:.85}
 .wgrid dt{font-family:var(--mono); font-size:10.5px; letter-spacing:.01em; color:var(--ink-3); padding-top:3px}
 .wgrid dd{margin:0; color:var(--ink-2)}
 .wgrid dd code{font-family:var(--mono); font-size:12.5px; background:var(--ground); padding:1px 5px; border-radius:0; color:var(--ink)}
+.screen{display:flex; flex-direction:column; gap:12px}
+.steps{margin:0; padding-left:1.3em; font-size:16.5px; line-height:1.55}
+.steps li{margin:8px 0}
+.watch{margin:0; padding:12px 14px; background:#F4F4F4; border-left:3px solid var(--chi); font-size:16.5px; line-height:1.5}
+.wtag{display:block; font-weight:700; margin-bottom:4px}
+.more{margin-top:8px}
+.more summary{font-size:16.5px; font-weight:700; min-height:44px; display:flex; align-items:center; cursor:pointer}
+.more p, .more li{font-size:16.5px; line-height:1.55}
 .builder{display:flex; flex-direction:column; gap:14px; margin-top:16px}
 .builder .rules, .builder .rosterbox ul{margin:0; padding-left:18px; font-size:16.5px; line-height:1.55; color:var(--ink)}
 .builder .rules li, .builder .rosterbox li{margin:6px 0}

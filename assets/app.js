@@ -825,11 +825,11 @@ addAsk(['How do I extend my insurance for my travel period'], {
   topic:'Insurance Extension Request', to:'chiwt', cc:'coordinator',
   rules:[
     'Ask before your program end date.',
-    'The fee is 50 dollars. Pay by card when CHI sends the request.',
+    'The fee is 50 dollars. Pay by card before your program end date.',
     'Do not put a card number in this email.',
     'The last day of cover can be at most 30 days after your program end date.'
   ],
-  fixed:['Fee: 50 dollars. Pay by card when CHI sends the request.'],
+  fixed:['Fee: 50 dollars. Pay by card before your program end date.'],
   fields:[
     {id:'coverEnd', mail:'Coverage end date', label:'What date should the cover end?', type:'date', required:true, min:'dsEndPlus1', max:'dsEndPlus30'},
     {id:'where', mail:'Where you will travel', label:'Which U.S. cities or states will you visit?', type:'text', required:true},
@@ -1139,6 +1139,12 @@ function askHtml(t){
     + '</section>';
 }
 
+function firstScreenText(t){
+  const p = t && t.plain;
+  const bits = p ? [p.lead].concat(p.steps || [], p.watch || []) : [t.lead].concat((t && t.body) || []);
+  return bits.filter(Boolean).map(s => String(s).replace(/<[^>]+>/g, ' ')).join(' ');
+}
+
 function leafBody(t){
   return t.body.map(p => {
     if(t.q === 'My visa appointment' && String(p).indexOf('Is your appointment after your start date') === 0){
@@ -1205,17 +1211,25 @@ function renderLeaf(){
         <div class="leaf-meta"><span class="pill ${t.r}">${t.r}</span><span style="font-size:12.5px;color:var(--ink-3)">${esc(ROUTE_D[t.r])}</span></div>
       </div>
       <div class="leaf-b">
-        <p class="lead">${fillSmart(t.lead)}</p>
         ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
-        ${t.q === 'When is the next online orientation' ? orientationScheduleHtml() : ''}
-        ${leafBody(t)}
-        ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${fillSmart(t.clock.t)}</div>` : ''}
-        ${t.hz ? `<div class="note" style="background:var(--ground);border-left-color:var(--s${STAGES.find(x=>x.key===t.s).n})">Housing has tiles at every point in your programme. Search the word housing and they all come up.</div>` : ''}
-        ${t.sample ? `<div class="sample">
-          <div class="sample-h"><span class="sample-l">${esc(t.sample.title)}</span><button class="copy" data-copy="${T.indexOf(t)}">Copy</button></div>
-          <div class="sample-t">${t.sample.lines.map(l=>fillSmart(l)||'&nbsp;').join('<br>')}</div>
-        </div>` : ''}
-        ${t.need && t.need.length ? `<div class="need"><h4>What your CHI team needs from you</h4><ul>${t.need.map(n=>fillSmart(n)).filter(Boolean).map(n=>`<li>${n}</li>`).join('')}</ul></div>` : ''}
+        <div class="screen">
+          <p class="lead">${fillSmart((t.plain && t.plain.lead) || t.lead)}</p>
+          ${(t.plain && t.plain.steps && t.plain.steps.length) ? `<ol class="steps">${t.plain.steps.map(step => { const text = fillSmart(step); return text ? '<li>' + text + '</li>' : ''; }).join('')}</ol>` : ''}
+          ${(t.plain && t.plain.watch) ? `<p class="watch"><span class="wtag">Watch out</span> ${fillSmart(t.plain.watch)}</p>` : ''}
+        </div>
+        ${t.q === 'When is the next online orientation' ? '<div class="sched">' + orientationScheduleHtml() + '</div>' : ''}
+        <details class="more">
+          <summary>More details</summary>
+          ${fillSmart(t.lead) ? '<p>' + fillSmart(t.lead) + '</p>' : ''}
+          ${leafBody(t)}
+          ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${fillSmart(t.clock.t)}</div>` : ''}
+          ${t.hz ? `<div class="note">Housing has tiles at every point in your program. Search the word housing and they all come up.</div>` : ''}
+          ${t.sample ? `<div class="sample">
+            <div class="sample-h"><span class="sample-l">${esc(t.sample.title)}</span><button class="copy" data-copy="${T.indexOf(t)}">Copy</button></div>
+            <div class="sample-t">${t.sample.lines.map(l=>fillSmart(l)||'&nbsp;').join('<br>')}</div>
+          </div>` : ''}
+          ${t.need && t.need.length ? `<div class="need"><h4>What to have ready</h4><ul>${t.need.map(n=>fillSmart(n)).filter(Boolean).map(n=>`<li>${n}</li>`).join('')}</ul></div>` : ''}
+        </details>
         ${askHtml(t)}
         ${actHtml}
       </div>

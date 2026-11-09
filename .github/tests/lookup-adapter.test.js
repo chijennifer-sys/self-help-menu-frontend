@@ -94,6 +94,7 @@ async function loadPage({ endpoint, href, handler }) {
   );
   const source = [
     fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'assets', 'plain.js'), 'utf8'),
     config,
     fs.readFileSync(path.join(ROOT, 'assets', 'office-holidays.js'), 'utf8'),
     fs.readFileSync(path.join(ROOT, 'assets', 'orientation.js'), 'utf8'),
@@ -1457,6 +1458,59 @@ test('job change and shorten program open the named Tally forms', async () => {
   search('end program', /I want to go home early/);
 });
 
+test('every tile opens with a short plain-English answer', () => {
+  const vm = require('node:vm');
+  const src = [
+    fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'assets', 'plain.js'), 'utf8')
+  ].join('\n');
+  const sandbox = { globalThis: null };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(src + '\nglobalThis.__T=T;', sandbox);
+  function syllables(word){
+    word = String(word).toLowerCase().replace(/[^a-z]/g, '');
+    if(!word) return 0;
+    word = word.replace(/e$/, '');
+    const groups = word.match(/[aeiouy]+/g);
+    return Math.max(1, groups ? groups.length : 1);
+  }
+  function measure(text){
+    const clean = String(text).replace(/<[^>]+>/g, ' ')
+      .replace(/\[\[([\s\S]*?)\]\]/g, '$1')
+      .replace(/\{(\w+)\|([^}]*)\}/g, (_, k, fb) => fb === 'omit' ? '' : fb)
+      .replace(/\{\w+\}/g, ' ');
+    const sentences = clean.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+    const words = clean.split(/\s+/).filter(w => /[A-Za-z0-9]/.test(w));
+    const syll = words.reduce((n, w) => n + syllables(w), 0);
+    const flesch = words.length && sentences.length
+      ? 206.835 - 1.015 * (words.length / sentences.length) - 84.6 * (syll / words.length)
+      : 0;
+    const long = sentences.filter(s => s.split(/\s+/).filter(Boolean).length > 20);
+    return { words: words.length, flesch, long };
+  }
+  const before = [];
+  const after = [];
+  sandbox.__T.forEach(t => {
+    assert.ok(t.plain && t.plain.lead && t.plain.watch, t.q);
+    assert.ok(t.plain.steps.length >= 3 && t.plain.steps.length <= 5, t.q);
+    const oldText = [t.lead].concat(t.body || [], t.clock ? t.clock.t : []).join(' ');
+    const newText = [t.plain.lead].concat(t.plain.steps, t.plain.watch).join(' ');
+    assert.equal(/\bagency\b/i.test(newText), false, t.q);
+    const oldScore = measure(oldText);
+    const newScore = measure(newText);
+    before.push(Object.assign({ q: t.q }, oldScore));
+    after.push(Object.assign({ q: t.q }, newScore));
+    assert.ok(newScore.words <= 60, t.q + ' has ' + newScore.words + ' words');
+    assert.deepEqual(newScore.long, [], t.q);
+  });
+  const avg = rows => rows.reduce((n, r) => n + r.flesch, 0) / rows.length;
+  const worst = rows => rows.slice().sort((a, b) => a.flesch - b.flesch).slice(0, 5);
+  console.log('READABILITY before', avg(before).toFixed(1), 'after', avg(after).toFixed(1));
+  console.log('WORST before', worst(before).map(r => r.flesch.toFixed(1) + ' ' + r.q).join(' | '));
+  console.log('WORST after', worst(after).map(r => r.flesch.toFixed(1) + ' ' + r.q).join(' | '));
+  assert.ok(avg(after) >= 60);
+});
+
 test('guided emails use the staff subject and do not send themselves', async () => {
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -1490,7 +1544,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
   page.sandbox.openQuestion('How do I extend my insurance for my travel period');
   let html = page.els.view.innerHTML;
   assert.match(html, /50 dollars/);
-  assert.match(html, /Pay by card when CHI sends the request/);
+  assert.match(html, /Pay by card before your program end date/);
   assert.match(html, /at most 30 days after your program end date/);
   assert.match(html, /Oct 15, 2026/);
   assert.match(html, /data-ask-send="1" disabled/);
@@ -1524,7 +1578,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
   assert.match(mail.body, /Coverage end date: Oct 15, 2026/);
   assert.match(mail.body, /Where you will travel: Boston, MA/);
   assert.match(mail.body, /Departure date from the USA: Oct 1, 2026/);
-  assert.match(mail.body, /Fee: 50 dollars\. Pay by card when CHI sends the request\./);
+  assert.match(mail.body, /Fee: 50 dollars\. Pay by card before your program end date\./);
   assert.equal(/card number|cvv|password|date of birth|2001-01-04|secret-token-value|\bAEX\b|agency/i.test(mail.body), false);
   assert.equal(/https?:\/\//.test(mail.body), false);
 
