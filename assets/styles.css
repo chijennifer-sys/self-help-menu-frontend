@@ -10,7 +10,7 @@
   /* charcoal and surface */
   --ink:#303030;               /* body and headline ink, 13:1 on surface */
   --ink-2:#5C5C5C;
-  --ink-3:#8A8A8A;
+  --ink-3:#595959;
   --ground:#FFFFFF;
   --card:#FFFFFF;
   --raise:#FAFAFA;
@@ -234,6 +234,7 @@ body.locked .ask h1{opacity:.85}
   flex:1; font-family:var(--mono); font-size:10px; font-weight:400; letter-spacing:.01em; color:var(--ink-3);
 }
 .copy{font-size:12px; font-weight:700; color:var(--chi); padding:7px 9px; border-radius:0; flex:none; min-height:34px}
+.copylink{display:inline-flex; align-items:center; margin-top:8px; padding:0; border:0; background:transparent; color:var(--chi); font-size:14px; font-weight:700; line-height:1.3; text-decoration:underline; cursor:pointer; min-height:44px}
 .copy:hover{background:var(--chi-soft)}
 .sample-t{padding:13px; font-size:14.5px; line-height:1.65; color:var(--ink)}
 .lock{background:var(--ground); border:1px dashed var(--rule); border-radius:0; padding:15px 15px 14px}
@@ -353,7 +354,7 @@ body.locked .ask h1{opacity:.85}
   padding:7px 16px calc(11px + env(safe-area-inset-bottom, 0px));
   background:linear-gradient(to top, var(--ground) 62%, transparent);
 }
-.bar-in{max-width:var(--wrap); margin:0 auto; display:flex; gap:7px}
+.bar-in{max-width:var(--wrap); margin:0 auto; display:flex; flex-wrap:wrap; gap:7px}
 .whatsappnote{
   max-width:var(--wrap); margin:6px auto 0; text-align:center;
   font-size:12.5px; line-height:1.35; color:var(--ink-2);
@@ -364,7 +365,7 @@ body.locked .ask h1{opacity:.85}
   font-size:13.5px; font-weight:700; box-shadow:none; color:var(--ink);
 }
 .bar button svg{flex:0 0 auto}
-.bar button span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.bar button span{white-space:normal}
 .bar button:hover{border-color:var(--chi); color:var(--chi)}
 #portal{flex:0 1 auto}
 
@@ -403,7 +404,9 @@ body.locked .ask h1{opacity:.85}
 .watch{margin:0; padding:12px 14px; background:#F4F4F4; border-left:3px solid var(--chi); font-size:16.5px; line-height:1.5}
 .wtag{display:block; font-weight:700; margin-bottom:4px}
 .more{margin-top:8px}
-.more summary{font-size:16.5px; font-weight:700; min-height:44px; display:flex; align-items:center; cursor:pointer}
+.more summary, .still summary{font-size:16.5px; font-weight:700; min-height:44px; display:flex; align-items:center; cursor:pointer}
+.still{margin-top:14px}
+.askhint{display:block; font-size:16px; line-height:1.45; color:#303030; margin-top:6px}
 .more p, .more li{font-size:16.5px; line-height:1.55}
 .builder{display:flex; flex-direction:column; gap:14px; margin-top:16px}
 .builder .rules, .builder .rosterbox ul{margin:0; padding-left:18px; font-size:16.5px; line-height:1.55; color:var(--ink)}
@@ -416,7 +419,8 @@ body.locked .ask h1{opacity:.85}
 .askerr, .asknote{color:var(--chi); font-size:16px; line-height:1.45}
 .choices{display:flex; flex-wrap:wrap; gap:8px}
 .choice{border:1px solid #303030; background:#fff; color:#303030; min-height:44px; padding:8px 12px; font:inherit; font-size:16px}
-.choice[aria-pressed="true"]{background:var(--chi); color:#fff; border-color:var(--chi)}
+.choice[aria-pressed="true"]{background:var(--chi); color:#fff; border-color:var(--chi); font-weight:700}
+.choice[aria-pressed="true"]::before{content:"Selected. "}
 .leaf-b p, .lead, .you, .nextitem{font-size:16.5px; line-height:1.6}
 .foot{border-top:1px solid var(--rule); margin-top:30px; padding:16px 2px 0; font-size:12.5px; color:var(--ink-3); line-height:1.6}
 .empty{text-align:center; padding:40px 16px; color:var(--ink-3); font-size:14.5px}
@@ -540,7 +544,7 @@ body.locked .ask h1{opacity:.85}
 .bar button:hover{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
 
 /* board switcher chips */
-.chip{background:var(--panel); border:1px solid transparent; min-height:38px; padding:0 13px}
+.chip{background:var(--panel); border:1px solid transparent; min-height:44px; padding:0 13px}
 .chip:hover{background:var(--ink); border-color:var(--ink); color:#FFFFFF}
 .chip:hover .dot{background:#FFFFFF}
 .chip.on{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
@@ -558,7 +562,7 @@ body.locked .ask h1{opacity:.85}
 .copy:hover{background:var(--chi); color:var(--on-chi)}
 .idskip{background:var(--panel); color:var(--ink-2); padding:12px}
 .idskip:hover{background:var(--ink); color:#FFFFFF}
-.iconbtn{background:var(--panel); width:36px; height:36px}
+.iconbtn{background:var(--panel); width:44px; height:44px}
 @media (max-width:379px){
   .mark-txt{font-size:12.5px}
   .mark-rule{width:16px}
@@ -570,7 +574,7 @@ body.locked .ask h1{opacity:.85}
 .pick:hover{background:var(--card); border-color:var(--chi)}
 .strip button{background:var(--panel); padding:7px 11px; min-height:34px; font-size:12px}
 .strip button:hover{background:var(--chi); color:var(--on-chi)}
-.viewsw button{min-height:36px; padding:0 11px}
+.viewsw button{min-height:44px; padding:0 11px}
 .idrow input{height:46px}
 .search{height:46px}
 
@@ -606,8 +610,19 @@ body.locked .ask h1{opacity:.85}
   .mark{gap:8px}
   .mark-rule{width:14px}
   .mark-txt{font-size:12.5px}
-  .iconbtn{width:32px; height:32px}
-  .viewsw button{padding:0 8px; font-size:10.5px; min-height:32px}
+  .iconbtn{width:44px; height:44px}
+  .viewsw button{padding:0 8px; font-size:12px; min-height:44px}
+}
+@media (max-width:400px){
+  .choices{flex-direction:column}
+  .choice{width:100%; text-align:left}
+  .askq input, .askq textarea, input[type="date"], input[type="time"]{
+    width:100%; max-width:100%; font-size:16px; min-height:48px;
+  }
+  .bar button, .chip, .crumb button, .search button, .strip button, .copy, .idskip, .iconbtn, .viewsw button{
+    min-height:44px;
+  }
+  .iconbtn{width:44px; height:44px}
 }
 @media (max-width:339px){
   .mark-txt{font-size:11.5px}
@@ -627,3 +642,10 @@ body.locked .ask h1{opacity:.85}
 .top{border-bottom:1px solid var(--rule)}
 @media (max-width:374px){ .mark-lockup{height:23px} }
 @media (max-width:339px){ .mark-lockup{height:21px} }
+:focus-visible{outline:3px solid var(--chi); outline-offset:2px}
+h2, .lab, .lead, .leaf{overflow-wrap:anywhere}
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important}
+}
+.foryou{margin:8px 0 14px}
+.foryou h2{font-size:18px; margin:0 0 4px}

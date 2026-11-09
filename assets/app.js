@@ -20,17 +20,23 @@ try{ const raw = localStorage.getItem('chi_me'); if(raw) ME = JSON.parse(raw); }
    not decoration. Without it, the first participant who copies the
    link out of their browser and posts it in the employer WhatsApp
    group hands forty people their own record. */
-const LINK_TOKEN = (() => {
+/* ?tile= is a stable topic link, never a person. Student id, date of
+   birth, name, and the personal ?p= token are not left in the address. */
+const PAGE_IDENTITY_KEYS = ['sid','dob','name','first','last','employer','email','emailMask','tok','token','q'];
+const START_LINK = (() => {
   try{
     const u = new URL(window.location.href);
-    const t = u.searchParams.get('p');
-    if(t){
-      u.searchParams.delete('p');
-      history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams : '') + u.hash);
-    }
-    return t || '';
-  }catch(e){ return ''; }
+    const token = u.searchParams.get('p') || '';
+    if(token) u.searchParams.delete('p');
+    PAGE_IDENTITY_KEYS.forEach(k => u.searchParams.delete(k));
+    const tile = (u.searchParams.get('tile') || '').trim().toLowerCase();
+    const next = u.pathname + (u.searchParams.toString() ? '?' + u.searchParams : '') + u.hash;
+    history.replaceState(null, '', next);
+    return { token: token, tile: tile };
+  }catch(e){ return { token:'', tile:'' }; }
 })();
+const LINK_TOKEN = START_LINK.token;
+const TILE_QUERY = START_LINK.tile;
 
 async function useLinkToken(){
   if(!LINK_TOKEN) return false;
@@ -58,8 +64,12 @@ function safeEmailMask(v){
   return maskEmail(s);
 }
 
+function realDate(v){
+  const d = D(v);
+  return d && !isNaN(d.getTime()) ? d : null;
+}
 function enrich(p){
-  const st = D(p.dsStart), en = D(p.dsEnd), ar = D(p.arrival);
+  const st = realDate(p.dsStart), en = realDate(p.dsEnd), ar = realDate(p.arrival);
   const day = st ? days(TODAY, st) : null;
   const len = (st && en) ? days(en, st) : null;
   const m = {...p};
@@ -108,6 +118,9 @@ function enrich(p){
   m.agencyName = AGENCY_NAME[p.agency] || p.agencyName || '';
   // Living in the USA is a board, not a moment, so nothing lands there by date.
   m.stage = (day === null) ? null : day < 0 ? 'home' : day <= 14 ? 'arr' : (m.daysLeft !== null && m.daysLeft <= 14) ? 'end' : (m.daysLeft !== null && m.daysLeft < 0) ? 'end' : 'work';
+  m.hardWeeks = (typeof day === 'number' && day >= 14 && day <= 28)
+    ? 'You are in weeks 3 or 4. These weeks are often the hardest.'
+    : '';
   const rawEmail = typeof p.email === 'string' ? p.email.trim() : '';
   if(typeof p.emailMask === 'string' && p.emailMask.trim() && !rawEmail){
     m.emailMask = safeEmailMask(p.emailMask);
@@ -191,7 +204,7 @@ function looksLikePerson(o){
 function adaptFull(raw){
   if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
-  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone','employerAddress','lastDayWorked','lastWorkDay'].forEach(k => {
+  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','visaEntries','entries','visaEntry','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone','employerAddress','lastDayWorked','lastWorkDay'].forEach(k => {
     const v = asText(raw[k]);
     if(v) out[k] = v;
   });
@@ -353,6 +366,18 @@ function fieldValue(k){
     if(typeof looksLikeAgencyCode==='function' && looksLikeAgencyCode(v)) return '';
     return v;
   }
+  if(k==='returnee'){
+    const s = v.toLowerCase();
+    if(s === 'yes' || s === 'y' || s === 'true' || s === 'returnee') return 'Yes';
+    return '';
+  }
+  if(k==='day' || k==='len' || k==='daysLeft'){
+    const n = Number(v);
+    if(!isFinite(n)) return '';
+    if(k==='day' && (n < 0 || (ME.daysLeft !== null && ME.daysLeft < 0))) return '';
+    if(k==='len' && (n <= 0 || ME.day === null || ME.day < 0 || (ME.daysLeft !== null && ME.daysLeft < 0))) return '';
+    return String(n);
+  }
   return v;
 }
 function fill(str){
@@ -505,12 +530,130 @@ function nextStepsHtml(){
   ).join('') + '</section>';
 }
 
+/* Stable topic slugs. These stay put when a title is edited.
+   A link is ?tile=<slug> and nothing else about the student. */
+const TILE_SLUGS = {
+  'When is the next online orientation':'orientation',
+  'My visa appointment':'visa-appointment',
+  'Where is my DS-2019':'ds-2019',
+  'I need to change my start date':'start-date',
+  'Can CHI check my housing is not a scam':'housing-scam',
+  'How early can I arrive':'arrive-early',
+  'Where do I enter my visa results':'visa-results',
+  'Where do I enter my flight details':'flight-details',
+  'Where do I verify my housing':'verify-housing',
+  'What airport should I fly into':'airport',
+  'When should I contact my employer':'contact-employer',
+  'WhatsApp groups for my employer':'whatsapp-group',
+  'Where is my job description or offer':'job-offer',
+  'What documents do I need':'documents',
+  'Where can I find my sponsor letter':'sponsor-letter',
+  'What should I bring':'packing',
+  'Can I get a second job before I arrive':'second-job-before-arrival',
+  'Can I start my Social Security':'social-security-before-arrival',
+  'Where do I go on my first day':'first-day',
+  'My housing when I land':'housing-on-arrival',
+  'How do I get my I-94':'i-94',
+  'How do I validate my SEVIS record':'sevis',
+  'How do I apply for my Social Security Number':'social-security',
+  'How do I fill in my employment paperwork':'employment-paperwork',
+  'How do I get a US phone number':'us-phone',
+  'How do I open a US bank account':'bank-account',
+  'How do I get to work':'transport',
+  'I need casino fingerprinting':'casino-fingerprinting',
+  'I moved to a new address':'address-change',
+  'I am not getting enough hours':'hours',
+  'My pay is wrong':'pay-wrong',
+  'What tax comes out of my pay':'tax',
+  'There is Social Security or Medicare on my check':'fica',
+  'I did not get my paycheck':'paycheck',
+  'My time off was refused':'time-off',
+  'I have a problem with my manager':'manager',
+  'I have a problem with a coworker':'coworker',
+  'I was sent home from a shift':'sent-home',
+  'I lost my job':'lost-job',
+  'How do I get a second job approved':'second-job',
+  'My casino fingerprinting':'casino-fingerprinting-status',
+  'Can I change to a different employer':'job-change',
+  'Can I make my second job my main job':'second-job-main',
+  'Something else about my job':'something-else',
+  'I was in an accident':'accident',
+  'I am sick or I am hurt':'sick',
+  'I want to see a doctor':'doctor',
+  'I have a toothache':'toothache',
+  'Where do I find my insurance card':'insurance-card',
+  'I feel unsafe or I am being harassed':'unsafe',
+  'I am struggling or homesick':'homesick',
+  'I lost my passport or another document':'lost-passport',
+  'I need a letter or a document from CHI':'letter-from-chi',
+  'I cannot get into my CHI portal':'portal-login',
+  'My Social Security card has not come':'social-security-card',
+  'Address verification for the bank':'address-verification',
+  'Can I travel inside or outside the United States':'travel-signature',
+  'I am being evicted':'eviction',
+  'There is a problem at my housing':'housing-problem',
+  'I want to go home early':'go-home-early',
+  'When do I have to leave the United States':'leave-the-us',
+  'Can I travel before I go home':'travel-before-home',
+  'How do I extend my insurance for my travel period':'insurance-extension',
+  'How do I get my final paycheck':'final-paycheck',
+  'Should I close my US bank account':'close-bank',
+  'How do I claim my tax overages back':'tax-overages',
+  'Can I come back next year':'return-next-year',
+  'Help me find housing':'find-housing',
+  'When do I start working':'start-working',
+  'Can I change my position or department':'change-position',
+  'My monthly evaluation':'monthly-evaluation',
+  'Who do I contact for help':'who-to-contact'
+};
+globalThis.TILE_SLUGS = TILE_SLUGS;
+function slugFor(t){
+  return t && TILE_SLUGS[t.q] || '';
+}
+function currentPageUrl(){
+  try{
+    const live = new URL(window.location.href);
+    const remembered = history && typeof history.url === 'string' && history.url ? history.url : '';
+    if(remembered) return new URL(remembered, live.origin);
+    return live;
+  }catch(e){ return null; }
+}
+function tileShareUrl(t){
+  const slug = slugFor(t);
+  const u = currentPageUrl();
+  if(!u) return '?tile=' + encodeURIComponent(slug);
+  const clean = new URL(u.origin + u.pathname);
+  clean.searchParams.set('tile', slug);
+  return clean.toString();
+}
+function tileLinkButton(t){
+  return '<button type="button" class="copylink" data-tile-link="' + esc(tileShareUrl(t)) + '">Copy link to this tile</button>';
+}
+function syncTileUrl(){
+  const u = currentPageUrl();
+  if(!u) return;
+  PAGE_IDENTITY_KEYS.forEach(k => u.searchParams.delete(k));
+  if(u.searchParams.get('p')) u.searchParams.delete('p');
+  if(state.leaf !== null && T[state.leaf] && slugFor(T[state.leaf])) u.searchParams.set('tile', slugFor(T[state.leaf]));
+  else u.searchParams.delete('tile');
+  const next = u.pathname + (u.searchParams.toString() ? '?' + u.searchParams : '') + u.hash;
+  try{ history.replaceState(null, '', next); }catch(e){}
+}
+function applyTileQuery(){
+  if(!TILE_QUERY) return;
+  const i = T.findIndex(t => slugFor(t) === TILE_QUERY);
+  state.q = '';
+  if(i < 0){ state.leaf = null; state.stage = null; return; }
+  state.leaf = i;
+  state.stage = T[i].s;
+}
 function render(){
   if(ME && ME.stage && !state.q && state.leaf === null && !state.stage) state.stage = ME.stage;
-  if(state.q){ return renderSearch(); }
-  if(state.leaf !== null){ return renderLeaf(); }
-  if(state.stage){ return renderStage(); }
-  return renderHome();
+  if(state.q) renderSearch();
+  else if(state.leaf !== null) renderLeaf();
+  else if(state.stage) renderStage();
+  else renderHome();
+  syncTileUrl();
 }
 
 function renderHome(){
@@ -576,8 +719,42 @@ function renderStage(){
   view.innerHTML = `
     ${ME ? nextStepsHtml() : ''}
     ${nav}
+    ${forYouHtml()}
     ${headline}
     ${inner}`;
+}
+const PHASE_TILES = {
+  before:['My visa appointment','Where is my DS-2019','Where do I enter my flight details','Where do I verify my housing','What documents do I need','How early can I arrive'],
+  first:['Where do I go on my first day','How do I validate my SEVIS record','How do I get my I-94','How do I apply for my Social Security Number','How do I get a US phone number','My housing when I land'],
+  during:['I am not getting enough hours','I did not get my paycheck','How do I get a second job approved','I have a problem with my manager','I am sick or I am hurt','Who do I contact for help'],
+  last:['I want to go home early','When do I have to leave the United States','How do I get my final paycheck','Can I travel before I go home','How do I extend my insurance for my travel period','Should I close my US bank account'],
+  after:['When do I have to leave the United States','How do I get my final paycheck','How do I claim my tax overages back','Should I close my US bank account','Can I come back next year','My monthly evaluation']
+};
+const PHASE_LINE = {
+  before:'You have not arrived yet.',
+  first:'You are in your first 2 weeks.',
+  during:'You are in the middle of your program.',
+  last:'You are in the last 3 weeks.',
+  after:'Your program end date has passed.'
+};
+function programPhase(){
+  if(!ME) return '';
+  const hasStart = ME.day !== null && ME.day !== undefined;
+  const hasEnd = ME.daysLeft !== null && ME.daysLeft !== undefined;
+  if(!hasStart && !hasEnd) return '';
+  if(hasEnd && ME.daysLeft < 0) return 'after';
+  if(hasStart && ME.day < 0) return 'before';
+  if(hasEnd && ME.daysLeft <= 21) return 'last';
+  if(hasStart && ME.day <= 13) return 'first';
+  return 'during';
+}
+function forYouHtml(){
+  const phase = programPhase();
+  const names = PHASE_TILES[phase];
+  if(!names) return '';
+  const tiles = names.map(q => T.find(t => t.q === q)).filter(Boolean);
+  if(tiles.length < 6) return '';
+  return '<section class="foryou"><h2>For you right now</h2><p>' + esc(PHASE_LINE[phase]) + '</p><div class="grid">' + tiles.map(qrow).join('') + '</div></section>';
 }
 
 function qrow(t){
@@ -590,11 +767,116 @@ function qrow(t){
   </button>`;
 }
 
+const SEARCH_STOP = { do:1, i:1, my:1, the:1, a:1, an:1, to:1, of:1, for:1, and:1, is:1, me:1, in:1, on:1, or:1, it:1 };
+const SEARCH_FIX = {
+  pasport:'passport', pasaport:'passport', passort:'passport',
+  paychek:'paycheck', cheque:'paycheck', socail:'social', securty:'security',
+  acident:'accident', doktor:'doctor', sik:'sick', denyed:'denied',
+  housin:'housing', sevice:'sevis', fly:'flight', flying:'flight',
+  i94:'i-94', salary:'salary'
+};
+/* Lower rank = asked more often in the WhatsApp and case notes. */
+const ASK_RANK = {
+  'I want to go home early':1,
+  'When do I have to leave the United States':1,
+  'I did not get my paycheck':2,
+  'How do I get my final paycheck':2,
+  'My pay is wrong':2,
+  'I have a problem with my manager':3,
+  'I have a problem with a coworker':3,
+  'I feel unsafe or I am being harassed':3,
+  'I am struggling or homesick':3,
+  'I lost my job':4,
+  'I was sent home from a shift':4,
+  'Where do I verify my housing':5,
+  'There is a problem at my housing':5,
+  'Help me find housing':5,
+  'I am being evicted':5,
+  'I cannot get into my CHI portal':6,
+  'Where can I find my sponsor letter':6,
+  'Can I change to a different employer':7,
+  'I am not getting enough hours':8,
+  'I am sick or I am hurt':9,
+  'I want to see a doctor':9,
+  'I was in an accident':9,
+  'Where do I find my insurance card':9,
+  'I have a toothache':9,
+  'Where do I go on my first day':10,
+  'I need to change my start date':10,
+  'How early can I arrive':10,
+  'How do I get a second job approved':11,
+  'How do I apply for my Social Security Number':12,
+  'Can I start my Social Security':12,
+  'My Social Security card has not come':12,
+  'How do I validate my SEVIS record':13,
+  'When do I start working':14,
+  'How do I fill in my employment paperwork':14,
+  'What tax comes out of my pay':15,
+  'There is Social Security or Medicare on my check':15,
+  'How do I claim my tax overages back':15,
+  'Can I come back next year':16,
+  'How do I get to work':17,
+  'Where do I enter my flight details':18,
+  'What airport should I fly into':18,
+  'How do I open a US bank account':19,
+  'Should I close my US bank account':19,
+  'My visa appointment':21,
+  'Where do I enter my visa results':21,
+  'Where is my DS-2019':21,
+  'I need casino fingerprinting':22,
+  'My casino fingerprinting':22,
+  'Can I travel inside or outside the United States':23,
+  'Can I travel before I go home':23,
+  'When is the next online orientation':24,
+  'Can I change my position or department':25,
+  'How do I get a US phone number':28,
+  'How do I get my I-94':29,
+  'When should I contact my employer':30,
+  'I lost my passport or another document':31,
+  'My monthly evaluation':32,
+  'My time off was refused':33,
+  'Can CHI check my housing is not a scam':35
+};
+function searchTokens(raw){
+  const words = String(raw || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean);
+  const out = [];
+  words.forEach(word => {
+    if(SEARCH_STOP[word]) return;
+    const fixed = SEARCH_FIX[word] || word;
+    String(fixed).split(' ').forEach(part => {
+      if(part && !SEARCH_STOP[part] && out.indexOf(part) < 0) out.push(part);
+    });
+  });
+  return out;
+}
+function tokenInHay(hay, tok){
+  if(tok === 'i-94' || tok === 'i94') return /i-?94/.test(hay);
+  return hay.indexOf(tok) >= 0;
+}
+function searchHits(query){
+  const tokens = searchTokens(query);
+  if(!tokens.length) return [];
+  const scored = [];
+  T.forEach((t, i) => {
+    const hay = (t.q + ' ' + t.sub + ' ' + t.k).toLowerCase();
+    if(!tokens.every(tok => tokenInHay(hay, tok))) return;
+    const title = t.q.toLowerCase();
+    const sub = String(t.sub || '').toLowerCase();
+    let score = 200 - (ASK_RANK[t.q] || 80);
+    tokens.forEach(tok => {
+      if(tokenInHay(title, tok)) score += 80;
+      else if(tokenInHay(sub, tok)) score += 30;
+      else score += 10;
+    });
+    scored.push({ t:t, score:score, i:i });
+  });
+  scored.sort((a, b) => b.score - a.score || a.i - b.i);
+  return scored.map(row => row.t);
+}
 function renderSearch(){
-  const q = state.q.toLowerCase();
-  const hits = T.filter(t => (t.q+' '+t.sub+' '+t.k).toLowerCase().includes(q));
+  const hits = searchHits(state.q);
   view.innerHTML = hits.length
-    ? `<div class="sect-h" style="padding-top:14px"><h2>${hits.length} ${hits.length===1?'result':'results'}</h2><p>Across every stage of the program.</p></div>
+    ? `<div class="sect-h" style="padding-top:14px"><h2>${hits.length} ${hits.length===1?'result':'results'}</h2><p>The most asked topics come first.</p></div>
        <div class="grid">${hits.map(t=>qrow(t)).join('')}</div>`
     : `<div class="empty">Nothing matches that word.<br>Try SSN, hours, housing, visa or second job.</div>`;
 }
@@ -802,8 +1084,7 @@ const askState = {};
 const CHIWT = 'chiwt@chinet.org';
 
 function shortFmt(d){
-  if(!d) return '';
-  return d.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' });
+  return FMT(d);
 }
 function isoOf(d){
   if(!d) return '';
@@ -819,7 +1100,35 @@ function rosterIso(key){
 
 const ASK_FORMS = {};
 function addAsk(questions, spec){
+  if(spec.demote && !spec.fields.some(f => f.id === 'tried')){
+    spec.fields.unshift({id:'tried', mail:'What you already tried', label:'What did you already try?', type:'area', required:true});
+  }
   questions.forEach(q => { ASK_FORMS[q] = spec; });
+}
+const CHI_BUTTON = {
+  'I feel unsafe or I am being harassed':1,
+  'I am being evicted':1,
+  'I need casino fingerprinting':1,
+  'My casino fingerprinting':1,
+  'Where is my DS-2019':1,
+  'I was sent home from a shift':1
+};
+function stillSpec(t){
+  return {
+    topic:'I tried this',
+    to:'coordinator',
+    demote:true,
+    fields:[
+      {id:'tried', mail:'What you already tried', label:'What did you already try?', type:'area', required:true},
+      {id:'stuck', mail:'What still does not work', label:'What still does not work?', type:'area', required:true}
+    ]
+  };
+}
+function formSpec(t){
+  const spec = builderFor(t);
+  if(spec) return spec;
+  if(CHI_BUTTON[t.q]) return null;
+  return stillSpec(t);
 }
 addAsk(['How do I extend my insurance for my travel period'], {
   topic:'Insurance Extension Request', to:'chiwt', cc:'coordinator',
@@ -833,18 +1142,23 @@ addAsk(['How do I extend my insurance for my travel period'], {
   fields:[
     {id:'coverEnd', mail:'Coverage end date', label:'What date should the cover end?', type:'date', required:true, min:'dsEndPlus1', max:'dsEndPlus30'},
     {id:'where', mail:'Where you will travel', label:'Which U.S. cities or states will you visit?', type:'text', required:true},
-    {id:'depart', mail:'Departure date from the USA', label:'What date do you leave the USA?', type:'date', required:true}
+    {id:'depart', mail:'Departure date from the USA', label:'What date do you leave the USA?', type:'date', required:true},
+    {id:'canPay', mail:'Can pay by card in time', label:'Can you pay the 50 dollars by card before your program end date?', type:'choice', required:true, options:['Yes', 'No']}
   ]
 });
 addAsk(['Can I travel inside or outside the United States', 'Can I travel before I go home'], {
-  topic:'Travel Signature Request', to:'chiwt', cc:'coordinator',
+  topic:'Travel Signature Request', layout:'travel', to:'chiwt', toAddress:'CHIWT@chinet.org',
   rules:['Request a travel signature 2 weeks ahead.'],
-  fixed:['Request a travel signature 2 weeks ahead.'],
+  attachLine:'Attach: a clear full page scan of your DS-2019',
   fields:[
-    {id:'where', mail:'Destination', label:'Where are you going?', type:'text', required:true},
-    {id:'leave', mail:'Date you leave the United States', label:'What date do you leave the United States?', type:'date', required:true},
-    {id:'back', mail:'Date you come back', label:'What date do you come back?', type:'date', required:true},
-    {id:'how', mail:'How CHI gets the DS-2019', label:'How will you get the DS-2019 to CHI?', type:'choice', required:true, options:['I will email a photo of the full page', 'I will pick it up']}
+    {id:'dest', mail:'Travel destination', label:'Which country and city are you going to?', type:'text', required:true},
+    {id:'leave', mail:'Departure date from the United States', label:'What date do you leave the United States?', type:'date', required:true},
+    {id:'back', mail:'Return date to the United States', label:'What date do you come back to the United States?', type:'date', required:true, max:'dayBeforeDsEnd'},
+    {id:'bossYes', mail:'Employer approved this time off', label:'Did your employer approve this time off?', type:'choice', required:true, options:['Yes', 'No'], must:'Yes', deny:'Ask your manager first.'},
+    {id:'scan', mail:'DS-2019 scan attached', label:'The DS-2019 scan is attached', type:'checks', required:true, options:['Yes']},
+    {id:'email', mail:'Email', label:'What email should CHI use to send it back?', type:'text', required:true},
+    {id:'whatsapp', mail:'WhatsApp number', label:'What is your WhatsApp number?', type:'text', required:true},
+    {id:'entries', mail:'Visa entries', label:'What does Entries say on your visa?', type:'choice', required:true, options:['Multiple (M)', 'Single'], onlyIf:'missingEntries'}
   ]
 });
 addAsk(['I want to go home early'], {
@@ -855,7 +1169,8 @@ addAsk(['I want to go home early'], {
     {id:'lastDay', mail:'Final day of work', label:'What is your final day of work?', type:'date', required:true},
     {id:'told', mail:'Did you tell your employer and give one week notice?', label:'Did you tell your employer and give one week notice?', type:'choice', required:true, options:['Yes', 'No']},
     {id:'city', mail:'Departure city', label:'Which city do you fly from?', type:'text', required:true},
-    {id:'depart', mail:'Departure date', label:'What date do you fly?', type:'date', required:true}
+    {id:'depart', mail:'Departure date', label:'What date do you fly?', type:'date', required:true},
+    {id:'bought', mail:'Flight already bought', label:'Have you already bought your flight?', type:'choice', required:true, options:['Yes', 'No']}
   ]
 });
 addAsk(['I need to change my start date'], {
@@ -865,34 +1180,45 @@ addAsk(['I need to change my start date'], {
     {id:'origEnd', mail:'Original end date', label:'Original end date', type:'date', required:true, prefill:'dsEnd', lock:true},
     {id:'newStart', mail:'New start date', label:'What new start date do you need?', type:'date', required:true},
     {id:'newEnd', mail:'New end date', label:'What new end date do you need?', type:'date', required:true},
-    {id:'reason', mail:'Reason', label:'Why do the dates need to change?', type:'text', required:true}
+    {id:'reason', mail:'Reason', label:'Why do the dates need to change?', type:'text', required:true},
+    {id:'agreed', mail:'Employer agreed', label:'Did your employer agree?', type:'choice', required:true, options:['Yes', 'No', 'Not yet']}
   ]
 });
 addAsk(['Where do I enter my visa results'], {
-  topic:'Visa status', to:'coordinator',
+  topic:'Visa status', to:'coordinator', demote:true,
   fields:[
     {id:'interview', mail:'Embassy interview date', label:'What is your embassy interview date?', type:'date', required:true, prefill:'embassyInterviewIso'},
     {id:'status', mail:'Status', label:'What is the visa status?', type:'choice', required:true, options:['Approved', 'Denied', 'Pending', 'Administrative processing']},
+    {id:'inPassport', mail:'Visa is in your passport', label:'Is the visa in your passport now?', type:'choice', required:true, options:['Yes', 'No']},
     {id:'deniedOn', mail:'Date denied', label:'What date were you denied?', type:'date', required:true, when:{id:'status', value:'Denied'}},
     {id:'deniedWhy', mail:'Reason given', label:'What reason did they give?', type:'text', required:true, quick:['Not given'], when:{id:'status', value:'Denied'}}
   ]
 });
 addAsk(['When should I contact my employer'], {
-  topic:'Employer interview', to:'coordinator',
+  topic:'Employer interview', to:'coordinator', demote:true,
   fields:[
     {id:'date', mail:'Interview date', label:'What date is the interview?', type:'date', required:true},
     {id:'time', mail:'Interview time', label:'What time is the interview?', type:'time', required:true},
     {id:'who', mail:'Interviewer name', label:'What is the interviewer name?', type:'text', required:true},
-    {id:'platform', mail:'Platform', label:'Where is the interview?', type:'choice', required:true, options:['Zoom', 'Phone', 'WhatsApp', 'Other']}
+    {id:'platform', mail:'Platform', label:'Where is the interview?', type:'choice', required:true, options:['Zoom', 'Phone', 'WhatsApp', 'Other']},
+    {id:'done', mail:'Interview already happened', label:'Has the interview already happened?', type:'choice', required:true, options:['No', 'Yes']}
+  ]
+});
+addAsk(['Can I come back next year'], {
+  topic:'Return next year', to:'coordinator',
+  fields:[
+    {id:'prior', mail:'J-1 programs before this one', label:'How many J-1 programs did you do before?', type:'text', required:true},
+    {id:'same', mail:'Same employer', label:'Do you want the same employer?', type:'choice', required:true, options:['Yes', 'No', 'Not sure']}
   ]
 });
 addAsk(['I have a problem with my manager'], {
-  topic:'Needs help', to:'coordinator',
+  topic:'Needs help', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'What happened', label:'What happened?', type:'text', required:true},
     {id:'when', mail:'When it started', label:'When did it start?', type:'date', required:true},
     {id:'told', mail:'Talked to manager', label:'Did you talk to your manager?', type:'choice', required:true, options:['Yes', 'No']},
-    {id:'help', mail:'Help needed', label:'What help do you need?', type:'text', required:true}
+    {id:'help', mail:'Help needed', label:'What help do you need?', type:'text', required:true},
+    {id:'safeWork', mail:'Safe at work', label:'Do you feel safe at work?', type:'choice', required:true, options:['Yes', 'No']}
   ]
 });
 addAsk(['I lost my job'], {
@@ -900,63 +1226,91 @@ addAsk(['I lost my job'], {
   fields:[
     {id:'why', mail:'Reason', label:'Why did the job end?', type:'text', required:true},
     {id:'last', mail:'Last day worked', label:'What was your last day of work?', type:'date', required:true},
-    {id:'found', mail:'Found another job', label:'Have you found another job?', type:'choice', required:true, options:['Yes', 'No']}
+    {id:'found', mail:'Found another job', label:'Have you found another job?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'newStart', mail:'New job start date', label:'What is the new job start date?', type:'date', required:true, when:{id:'found', value:'Yes'}},
+    {id:'prior', mail:'J-1 programs before this one', label:'How many J-1 programs did you do before?', type:'text', required:true}
   ]
 });
 addAsk(['Where do I verify my housing'], {
-  topic:'Liability release', to:'chiwt', cc:'jennifer', withAct:true,
+  topic:'Liability release', to:'chiwt', cc:'jennifer', withAct:true, demote:true,
   note:'Email the signed PDF to CHI. You must attach the file yourself. This draft does not attach it.',
   fields:[
-    {id:'attach', mail:'Signed PDF', label:'Will you attach the signed PDF yourself?', type:'choice', required:true, options:['Yes']}
+    {id:'attach', mail:'Signed PDF', label:'Will you attach the signed PDF yourself?', type:'choice', required:true, options:['Yes']},
+    {id:'whoSigns', mail:'Who must sign', label:'Who must sign?', type:'choice', required:true, options:['Me', 'A family member', 'The host']}
   ]
 });
 addAsk(['There is a problem at my housing'], {
-  topic:'Housing problem', to:'coordinator',
+  topic:'Housing problem', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'Problem', label:'What is the problem?', type:'choice', required:true, options:['Repair', 'Rent', 'Roommate', 'Other']},
     {id:'when', mail:'When it started', label:'When did it start?', type:'date', required:true},
-    {id:'told', mail:'Wrote to the landlord', label:'Did you write to the landlord?', type:'choice', required:true, options:['Yes', 'No']}
+    {id:'told', mail:'Wrote to the landlord', label:'Did you write to the landlord?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'tonight', mail:'Can stay tonight', label:'Can you stay there tonight?', type:'choice', required:true, options:['Yes', 'No']}
   ]
 });
 addAsk(['I did not get my paycheck'], {
-  topic:'Missing paycheck', to:'coordinator',
+  topic:'Missing paycheck', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'What is wrong', label:'What is wrong with the pay?', type:'choice', required:true, options:['Missing pay', 'Wrong amount', 'Name on the check', 'Other']},
     {id:'when', mail:'Pay date', label:'What was the pay date?', type:'date', required:true},
-    {id:'told', mail:'Told payroll', label:'Did you tell payroll?', type:'choice', required:true, options:['Yes', 'No']}
+    {id:'told', mail:'Told payroll', label:'Did you tell payroll?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'finalPay', mail:'Final paycheck', label:'Is this your final paycheck?', type:'choice', required:true, options:['No', 'Yes']}
   ]
 });
 addAsk(['I am not getting enough hours'], {
-  topic:'Hours cut', to:'coordinator',
+  topic:'Hours cut', to:'coordinator', demote:true,
   fields:[
     {id:'hours', mail:'Hours this week', label:'How many hours did you work this week?', type:'text', required:true},
     {id:'weeks', mail:'Short weeks', label:'How many weeks were short?', type:'choice', required:true, options:['1', '2', '3 or more']},
-    {id:'when', mail:'Week of', label:'Which week should we look at?', type:'date', required:true}
+    {id:'when', mail:'Week of', label:'Which week should we look at?', type:'date', required:true},
+    {id:'toldMgr', mail:'Told your manager', label:'Did you tell your manager?', type:'choice', required:true, options:['Yes', 'No']}
   ]
 });
 addAsk(['I am sick or I am hurt'], {
-  topic:'Sick or hurt', to:'coordinator',
+  topic:'Sick or hurt', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'What is wrong', label:'What is wrong?', type:'text', required:true},
     {id:'when', mail:'When it started', label:'When did it start?', type:'date', required:true},
     {id:'where', mail:'Where you went', label:'Where did you go?', type:'choice', required:true, options:['Teladoc', 'Walk-in clinic', 'Urgent care', 'Emergency room', 'Not yet']},
-    {id:'work', mail:'Happened at work', label:'Did this happen at work?', type:'choice', required:true, options:['Yes', 'No']}
+    {id:'work', mail:'Happened at work', label:'Did this happen at work?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'overnight', mail:'Hospital overnight', label:'Did you stay in a hospital overnight?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'nights', mail:'Nights in hospital', label:'How many nights?', type:'text', required:true, when:{id:'overnight', value:'Yes'}}
   ]
 });
 addAsk(['I want to see a doctor'], {
-  topic:'Doctor visit', to:'coordinator',
+  topic:'Doctor visit', to:'coordinator', demote:true,
   fields:[
     {id:'need', mail:'What you need', label:'What do you need?', type:'choice', required:true, options:['A doctor visit', 'A bill or claim', 'A prescription']},
     {id:'when', mail:'Date', label:'What date was the visit?', type:'date', required:true},
-    {id:'paid', mail:'Already paid a bill', label:'Did you already pay a bill?', type:'choice', required:true, options:['Yes', 'No']}
+    {id:'paid', mail:'Already paid a bill', label:'Did you already pay a bill?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'tookCard', mail:'Clinic took the insurance card', label:'Did the clinic take your insurance card?', type:'choice', required:true, options:['Yes', 'No']}
   ]
 });
 addAsk(['I lost my passport or another document'], {
-  topic:'Lost document', to:'coordinator',
+  topic:'Incident - Lost Passport', to:'coordinator', incident:true,
+  note:'CHI must report some things to the U.S. government. This helps you and keeps you safe. If you have photos, attach them in your email app. This page cannot attach files.',
   fields:[
-    {id:'which', mail:'Document', label:'Which document is missing?', type:'choice', required:true, options:['Passport', 'DS-2019 form', 'Insurance card', 'Other']},
-    {id:'when', mail:'When you noticed', label:'When did you notice?', type:'date', required:true},
-    {id:'police', mail:'Police report', label:'Did you make a police report?', type:'choice', required:true, options:['Yes', 'No']}
+    {id:'items', mail:'Items', label:'Which items are gone?', type:'checks', required:true, options:['Passport', 'Visa', 'DS-2019', 'I-94 printout', 'Other']},
+    {id:'how', mail:'Lost or stolen', label:'Was it lost or stolen?', type:'choice', required:true, options:['Lost', 'Stolen']},
+    {id:'when', mail:'Date it happened', label:'What date did this happen?', type:'date', required:true},
+    {id:'toldChi', mail:'Date you first told CHI', label:'What date did you first tell CHI?', type:'date', required:true, prefill:'today'},
+    {id:'city', mail:'City', label:'What city?', type:'text', required:true, prefill:'placeCity'},
+    {id:'state', mail:'State', label:'What state?', type:'text', required:true, prefill:'placeState'},
+    {id:'place', mail:'Place', label:'What kind of place?', type:'choice', required:true, options:['Work', 'Housing', 'Other']},
+    {id:'what', mail:'What happened', label:'What happened, step by step?', type:'area', required:true},
+    {id:'police', mail:'Police report made', label:'Did you make a police report?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'policeDept', mail:'Police department', label:'What is the police department name?', type:'text', required:true, when:{id:'police', value:'Yes'}},
+    {id:'reportNo', mail:'Police report number', label:'What is the report number, if you have it?', type:'text', when:{id:'police', value:'Yes'}},
+    {id:'embassy', mail:'Contacted your embassy or consulate', label:'Did you contact your embassy or consulate?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'embassyDate', mail:'Date you contacted the embassy', label:'What date did you contact them?', type:'date', required:true, when:{id:'embassy', value:'Yes'}},
+    {id:'passCountry', mail:'Passport country', label:'What country issued the passport?', type:'text', required:true, prefill:'country'},
+    {id:'newPass', mail:'New passport applied for', label:'Did you apply for a new passport?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'newPassDate', mail:'New passport application date', label:'What date did you apply?', type:'date', required:true, when:{id:'newPass', value:'Yes'}},
+    {id:'copies', mail:'Copies or photos', label:'Do you still have copies or photos?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'toldBoss', mail:'Employer told', label:'Did you tell your employer?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'travel', mail:'Travel planned soon', label:'Do you have travel planned soon?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'travelDate', mail:'Travel date', label:'What date is that trip?', type:'date', required:true, when:{id:'travel', value:'Yes'}},
+    {id:'help', mail:'Help you need', label:'What help do you need from CHI?', type:'area', required:true}
   ]
 });
 addAsk(['How do I get a second job approved'], {
@@ -964,25 +1318,42 @@ addAsk(['How do I get a second job approved'], {
   fields:[
     {id:'employer', mail:'New employer', label:'What is the new employer name?', type:'text', required:true},
     {id:'title', mail:'Job title', label:'What is the job title?', type:'text', required:true},
-    {id:'started', mail:'Already started', label:'Have you already started?', type:'choice', required:true, options:['Yes', 'No']},
-    {id:'when', mail:'Start date', label:'What is the start date?', type:'date', required:true}
+    {id:'started', mail:'Already started', label:'Have you already started?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'when', mail:'New job start date', label:'What is the new job start date?', type:'date', required:true},
+    {id:'overlap', mail:'Hours overlap the main job', label:'Do these hours overlap your main job?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'prior', mail:'J-1 programs before this one', label:'How many J-1 programs did you do before?', type:'text', required:true}
   ]
 });
 addAsk(['Where do I enter my flight details'], {
-  topic:'Flight change', to:'coordinator',
+  topic:'Flight change', to:'coordinator', demote:true,
   fields:[
     {id:'what', mail:'What changed', label:'What changed?', type:'choice', required:true, options:['New flight', 'Late landing', 'No flight yet']},
     {id:'when', mail:'Arrival date', label:'What is the arrival date?', type:'date', required:true},
-    {id:'flight', mail:'Flight number', label:'What is the flight number?', type:'text', required:true}
+    {id:'flight', mail:'Flight number', label:'What is the flight number?', type:'text', required:true},
+    {id:'landTime', mail:'Landing time', label:'What time do you land?', type:'time', required:true}
   ]
 });
 addAsk(['I was in an accident'], {
-  topic:'Accident', to:'coordinator',
+  topic:'Incident - Scooter Accident', to:'coordinator', incident:true, help911:true,
+  note:'CHI must report some things to the U.S. government. This helps you and keeps you safe. This form is for a scooter, e-bike, bike, car, or walking. If you have photos, attach them in your email app. This page cannot attach files.',
   fields:[
-    {id:'where', mail:'Where it happened', label:'Where did it happen?', type:'choice', required:true, options:['At work', 'On the road', 'Other']},
-    {id:'when', mail:'Date', label:'What date did it happen?', type:'date', required:true},
-    {id:'told', mail:'Told your manager', label:'Did you tell your manager?', type:'choice', required:true, options:['Yes', 'No']},
-    {id:'what', mail:'What happened', label:'What happened?', type:'text', required:true}
+    {id:'safe', mail:'Safe right now', label:'Are you safe right now?', type:'choice', required:true, options:['Yes', 'No']},
+    {id:'missWork', mail:'Will you miss work?', label:'Will you miss work?', type:'choice', required:true, top:true, options:['No', 'Yes', 'Not sure']},
+    {id:'daysSoFar', mail:'Days missed so far', label:'How many days so far?', type:'text', required:true, top:true, when:{id:'missWork', value:'Yes'}},
+    {id:'backWork', mail:'When can you go back to work?', label:'When can you go back to work?', type:'date', required:true, top:true, or:'Doctor has not said yet', quick:['Doctor has not said yet']},
+    {id:'doctorNote', mail:'Doctor gave a note', label:'Did the doctor give you a note?', type:'choice', required:true, top:true, options:['No', 'Yes'], hint:'If yes, attach the note in your email app.'},
+    {id:'helmet', mail:'Were you wearing a helmet?', label:'Were you wearing a helmet?', type:'choice', required:true, top:true, options:['Yes', 'No']},
+    {id:'when', mail:'Date', label:'What date did this happen?', type:'date', required:true},
+    {id:'vehicle', mail:'Vehicle', label:'What were you using?', type:'choice', required:true, options:['Scooter', 'Rented scooter', 'E-bike', 'Bike', 'Car', 'Walking']},
+    {id:'company', mail:'Rental company', label:'What company, such as Lime or Bird?', type:'text', required:true, when:{id:'vehicle', value:'Rented scooter'}},
+    {id:'role', mail:'Riding or hit', label:'Were you riding, or were you hit?', type:'choice', required:true, options:['I was riding', 'I was hit', 'Both']},
+    {id:'doctor', mail:'Doctor, urgent care, or ER', label:'Did you go to a doctor, urgent care, or the ER?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'doctorName', mail:'Place or doctor name', label:'What is the name of the place or doctor?', type:'text', required:true, when:{id:'doctor', value:'Yes'}},
+    {id:'nights', mail:'Nights in hospital', label:'How many nights in the hospital? Write 0 if none.', type:'text', required:true, when:{id:'doctor', value:'Yes'}},
+    {id:'police', mail:'Police came', label:'Did the police come?', type:'choice', required:true, options:['No', 'Yes']},
+    {id:'policeDept', mail:'Police department', label:'What is the police department name?', type:'text', required:true, when:{id:'police', value:'Yes'}},
+    {id:'reportNo', mail:'Police report number', label:'What is the report number, if you have it?', type:'text', when:{id:'police', value:'Yes'}},
+    {id:'what', mail:'What happened', label:'What happened, step by step?', type:'area', required:true}
   ]
 });
 
@@ -994,20 +1365,42 @@ function boundDate(specName){
   if(!end || !D(end)) return '';
   if(specName === 'dsEndPlus1') return isoOf(addDays(D(end), 1));
   if(specName === 'dsEndPlus30') return isoOf(addDays(D(end), 30));
+  if(specName === 'dayBeforeDsEnd') return isoOf(addDays(D(end), -1));
+  return '';
+}
+function rosterVisaEntries(){
+  const keys = ['visaEntries','entries','visaEntry'];
+  for(let i = 0; i < keys.length; i++){
+    const v = asText(ME && ME[keys[i]]);
+    if(v) return v;
+  }
   return '';
 }
 function fieldShown(t, field){
+  if(field.onlyIf === 'missingEntries' && rosterVisaEntries()) return false;
   if(!field.when) return true;
   return fieldValueAsk(t, {id:field.when.id}) === field.when.value;
 }
+function todayIso(){
+  const d = new Date();
+  return isoOf(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+function splitTown(which){
+  const loc = asText(ME && (ME.location || ME.employerCity));
+  const cut = loc.lastIndexOf(',');
+  if(which === 'city') return cut < 0 ? loc : loc.slice(0, cut).trim();
+  return cut < 0 ? '' : loc.slice(cut + 1).trim();
+}
 function fieldValueAsk(t, field){
   const bag = askState[t.q] || {};
-  if(Object.prototype.hasOwnProperty.call(bag, field.id)) return bag[field.id];
-  if(field.prefill){
-    if(field.prefill === 'embassyInterviewIso') return rosterIso('embassyInterviewIso');
-    return rosterIso(field.prefill);
-  }
-  return '';
+  if(field && field.id && Object.prototype.hasOwnProperty.call(bag, field.id)) return bag[field.id];
+  if(!field || !field.prefill) return '';
+  if(field.prefill === 'today') return todayIso();
+  if(field.prefill === 'placeCity') return splitTown('city');
+  if(field.prefill === 'placeState') return splitTown('state');
+  if(field.prefill === 'country') return asText(ME && ME.country);
+  if(field.prefill === 'embassyInterviewIso') return rosterIso('embassyInterviewIso');
+  return rosterIso(field.prefill);
 }
 function fieldLimit(field, edge){
   return field[edge] ? boundDate(field[edge]) : '';
@@ -1015,12 +1408,17 @@ function fieldLimit(field, edge){
 function fieldError(t, field){
   if(!fieldShown(t, field)) return '';
   const value = fieldValueAsk(t, field);
+  if(field.or && value === field.or) return '';
   if(field.required && !asText(value)) return 'Required';
-  if(field.type === 'date' && value){
+  if(field.must && asText(value) && value !== field.must) return field.deny || 'Ask your manager first.';
+  if(field.type === 'date' && value && /^\d{4}-\d{2}-\d{2}$/.test(value)){
     const min = fieldLimit(field, 'min');
     const max = fieldLimit(field, 'max');
     if(min && value < min) return 'Pick a later date';
-    if(max && value > max) return 'That date is more than 30 days after your program end date';
+    if(max && value > max){
+      if(field.max === 'dayBeforeDsEnd') return 'Your return date must be before your program end date';
+      return 'That date is more than 30 days after your program end date';
+    }
   }
   return '';
 }
@@ -1028,43 +1426,112 @@ function askReady(t, spec){
   return spec.fields.every(field => !fieldShown(t, field) || !fieldError(t, field));
 }
 function askSubject(t, spec){
+  const urgent = (askState[t.q] || {}).__urgent === 'Yes';
+  if(spec.layout === 'travel'){
+    const name = asText(ME && ME.name) || 'No name';
+    const sid = asText(ME && ME.sid) || 'No Student ID';
+    const subject = 'Travel Signature Request, ' + name + ', SID ' + sid;
+    return urgent ? '⏰ ' + subject : subject;
+  }
   const season = asText(ME && ME.season) || 'No season';
   const sid = asText(ME && ME.sid) || 'No Student ID';
   const name = asText(ME && ME.name) || 'No name';
   let subject = spec.topic + ' | ' + season + ' | ' + sid + ' | ' + name;
-  if((askState[t.q] || {}).__urgent === 'Yes') subject = '⏰ Time Sensitive | ' + subject;
+  if(urgent) subject = '⏰ Time Sensitive | ' + subject;
   return subject;
 }
-function rosterMailLines(){
+function longDate(iso){
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(iso || '')) ? FMT(D(String(iso).slice(0, 10))) : '';
+}
+function travelBody(t){
+  const name = asText(ME && ME.name) || 'Not on file';
+  const sid = asText(ME && ME.sid) || 'Not on file';
+  const employer = asText(ME && ME.employer) || 'Not on file';
+  const start = longDate(rosterIso('dsStart')) || 'Not on file';
+  const end = longDate(rosterIso('dsEnd')) || 'Not on file';
+  const entries = rosterVisaEntries() || fieldValueAsk(t, {id:'entries'}) || 'Not on file';
+  const dest = fieldValueAsk(t, {id:'dest'}) || 'Not on file';
+  const leave = longDate(fieldValueAsk(t, {id:'leave'})) || 'Not on file';
+  const back = longDate(fieldValueAsk(t, {id:'back'})) || 'Not on file';
+  const email = fieldValueAsk(t, {id:'email'}) || 'Not on file';
+  const wa = fieldValueAsk(t, {id:'whatsapp'}) || 'Not on file';
+  return [
+    'Hello CHI Team,',
+    '',
+    'I am writing to request a travel signature on my DS-2019.',
+    '',
+    'Full name: ' + name,
+    'Student Program ID: ' + sid,
+    'Employer: ' + employer,
+    'Program dates: ' + start + ' to ' + end,
+    'Visa type: J-1, Entries ' + entries,
+    '',
+    'Travel destination: ' + dest,
+    'Departure date from the United States: ' + leave,
+    'Return date to the United States: ' + back,
+    '',
+    'My employer has approved this time off. A clear scan of my DS-2019 is attached. Please sign it and send it back before my departure date.',
+    '',
+    'Thank you,',
+    name,
+    email,
+    wa
+  ].join('\n');
+}
+function rosterMailLines(spec){
   const lines = [];
   const put = (label, value) => lines.push(label + ': ' + (asText(value) || 'Not on file'));
-  put('Participant Name', ME && ME.name);
-  put('Student ID', ME && ME.sid);
   put('Season', ME && ME.season);
-  put('Employer', ME && ME.employer);
   put('Location', ME && ME.location);
   put('Position/Job Title', ME && ME.job);
   const start = rosterIso('dsStart');
   const end = rosterIso('dsEnd');
   put('DS start', start ? shortFmt(D(start)) : '');
   put('DS end', end ? shortFmt(D(end)) : '');
+  if(spec && spec.incident){
+    put('Country', ME && ME.country);
+    put('SEVIS ID', ME && (ME.sevisId || ME.sevisID || ME.sevisNumber));
+    put('City', splitTown('city'));
+    put('State', splitTown('state'));
+    put('Coordinator', CHI_TEAM[assignedCoordinator()].greet);
+  }
   return lines;
 }
+function staffFactLines(){
+  const put = (label, value) => label + ': ' + (asText(value) || 'Not on file');
+  const start = rosterIso('dsStart');
+  const end = rosterIso('dsEnd');
+  const dates = (start && end) ? (shortFmt(D(start)) + ' to ' + shortFmt(D(end))) : (start ? shortFmt(D(start)) : (end ? shortFmt(D(end)) : 'Not on file'));
+  return [
+    put('Participant Name', ME && ME.name),
+    put('Student ID', ME && ME.sid),
+    put('Employer', ME && ME.employer),
+    'Program dates: ' + dates
+  ];
+}
 function askBody(t, spec){
-  const lines = ['Hello,', ''].concat(rosterMailLines());
-  lines.push('', 'Student ID: ' + (asText(ME && ME.sid) || 'Not on file'), '');
+  if(spec.layout === 'travel') return travelBody(t);
+  const lines = ['Hello,', ''].concat(staffFactLines());
+  lines.push('');
+  const answerLines = { top: [], rest: [] };
   spec.fields.forEach(field => {
     if(!fieldShown(t, field)) return;
     let value = fieldValueAsk(t, field);
     if(field.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) value = shortFmt(D(value));
-    lines.push((field.mail || field.label) + ': ' + (value || 'Not on file'));
+    const line = (field.mail || field.label) + ': ' + (value || 'Not on file');
+    answerLines[field.top ? 'top' : 'rest'].push(line);
   });
+  answerLines.top.forEach(line => lines.push(line));
+  if(answerLines.top.length) lines.push('');
+  rosterMailLines(spec).forEach(line => lines.push(line));
+  lines.push('');
+  answerLines.rest.forEach(line => lines.push(line));
   (spec.fixed || []).forEach(line => lines.push(line));
   if(spec.note) lines.push(spec.note);
   return lines.join('\n');
 }
 function askMailUrl(t, spec){
-  const to = spec.to === 'chiwt' ? CHIWT : CHI_TEAM[assignedCoordinator()].email;
+  const to = spec.toAddress || (spec.to === 'chiwt' ? CHIWT : CHI_TEAM[assignedCoordinator()].email);
   let cc = '';
   if(spec.cc === 'coordinator') cc = CHI_TEAM[assignedCoordinator()].email;
   else if(spec.cc === 'jennifer') cc = CHI_TEAM.jenn.email;
@@ -1083,7 +1550,7 @@ function setAskAnswer(id, value){
 }
 function openAskMail(){
   const t = T[state.leaf];
-  const spec = builderFor(t);
+  const spec = formSpec(t);
   if(!t || !spec || !askReady(t, spec)) return false;
   openMailDraft(askMailUrl(t, spec));
   return true;
@@ -1091,7 +1558,7 @@ function openAskMail(){
 globalThis.ASK_FORMS = ASK_FORMS;
 
 function askHtml(t){
-  const spec = builderFor(t);
+  const spec = formSpec(t);
   if(!spec || !ME) return '';
   const bag = askState[t.q] || {};
   const urgent = bag.__urgent === 'Yes';
@@ -1106,35 +1573,57 @@ function askHtml(t){
         const on = value === opt ? ' aria-pressed="true"' : ' aria-pressed="false"';
         return '<button type="button" class="choice" data-ask-choice="' + esc(field.id) + '" data-ask-value="' + esc(opt) + '"' + on + '>' + esc(opt) + '</button>';
       }).join('');
+      const hint = field.hint ? '<span class="askhint">' + esc(field.hint) + '</span>' : '';
+      return '<fieldset class="askq"><legend>' + esc(field.label) + req + '</legend><div class="choices">' + buttons + '</div>' + hint + errHtml + '</fieldset>';
+    }
+    if(field.type === 'checks'){
+      const picked = String(value || '').split(', ').filter(Boolean);
+      const buttons = field.options.map(opt => {
+        const on = picked.indexOf(opt) >= 0 ? ' aria-pressed="true"' : ' aria-pressed="false"';
+        return '<button type="button" class="choice" data-ask-check="' + esc(field.id) + '" data-ask-value="' + esc(opt) + '"' + on + '>' + esc(opt) + '</button>';
+      }).join('');
       return '<fieldset class="askq"><legend>' + esc(field.label) + req + '</legend><div class="choices">' + buttons + '</div>' + errHtml + '</fieldset>';
+    }
+    if(field.type === 'area'){
+      return '<label class="askq">' + esc(field.label) + req
+        + '<textarea data-ask="' + esc(field.id) + '" rows="4">' + esc(value) + '</textarea>'
+        + errHtml + '</label>';
     }
     const type = field.type === 'date' ? 'date' : field.type === 'time' ? 'time' : 'text';
     const min = fieldLimit(field, 'min');
     const max = fieldLimit(field, 'max');
-    const quick = (field.quick || []).map(opt =>
-      '<button type="button" class="choice" data-ask-choice="' + esc(field.id) + '" data-ask-value="' + esc(opt) + '">' + esc(opt) + '</button>'
-    ).join('');
+    const shown = field.or && value === field.or ? '' : value;
+    const quick = (field.quick || []).map(opt => {
+      const on = value === opt ? ' aria-pressed="true"' : ' aria-pressed="false"';
+      return '<button type="button" class="choice" data-ask-choice="' + esc(field.id) + '" data-ask-value="' + esc(opt) + '"' + on + '>' + esc(opt) + '</button>';
+    }).join('');
+    const hint = field.hint ? '<span class="askhint">' + esc(field.hint) + '</span>' : '';
     return '<label class="askq">' + esc(field.label) + req
-      + '<input data-ask="' + esc(field.id) + '" type="' + type + '" value="' + esc(value) + '"'
+      + '<input data-ask="' + esc(field.id) + '" type="' + type + '" value="' + esc(shown) + '"'
       + (min ? ' min="' + esc(min) + '"' : '')
       + (max ? ' max="' + esc(max) + '"' : '')
       + (field.lock ? ' readonly' : '')
-      + '>' + (quick ? '<span class="choices">' + quick + '</span>' : '') + errHtml + '</label>';
+      + '>' + (quick ? '<span class="choices">' + quick + '</span>' : '') + hint + errHtml + '</label>';
   }).join('');
   const ready = askReady(t, spec);
   const end = rosterIso('dsEnd');
   const maxText = end ? shortFmt(D(boundDate('dsEndPlus30'))) : '';
   const rules = (spec.rules || []).map(line => '<li>' + esc(line) + (line.indexOf('30 days') >= 0 && maxText ? ' The last allowed day is ' + esc(maxText) + '.' : '') + '</li>').join('');
-  const facts = rosterMailLines().map(line => '<li>' + esc(line) + '</li>').join('');
+  const facts = rosterMailLines(spec).map(line => '<li>' + esc(line) + '</li>').join('');
+  const safeNow = spec.help911 && fieldValueAsk(t, {id:'safe'}) === 'No'
+    ? '<p class="asknote">You are not safe. Call 911. Then call CHI at 1-800-432-4643, ext. 0.</p>'
+    : '';
   return '<section class="builder">'
     + (rules ? '<ul class="rules">' + rules + '</ul>' : '')
     + (spec.note ? '<p class="asknote">' + esc(spec.note) + '</p>' : '')
-    + '<div class="rosterbox"><p class="asktag">From your record</p><ul>' + facts + '</ul></div>'
+    + safeNow
+    + (spec.demote ? '' : '<div class="rosterbox"><p class="asktag">From your record</p><ul>' + facts + '</ul></div>')
     + fields
     + '<fieldset class="askq"><legend>Time sensitive?</legend><div class="choices">'
     + '<button type="button" class="choice" data-ask-choice="__urgent" data-ask-value="Yes"' + (urgent ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>Yes</button>'
     + '<button type="button" class="choice" data-ask-choice="__urgent" data-ask-value="No"' + (!urgent ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>No</button>'
     + '</div></fieldset>'
+    + (spec.attachLine ? '<p class="asknote">' + esc(spec.attachLine) + '</p>' : '')
     + '<button type="button" class="act" id="asksend" data-ask-send="1"' + (ready ? '' : ' disabled') + '>Review my email</button>'
     + '</section>';
 }
@@ -1170,8 +1659,14 @@ function renderLeaf(){
         <div class="leaf-h">
           <h2>${esc(t.q)}</h2>
           <div class="leaf-meta"><span class="pill ${t.r}">${t.r}</span><span style="font-size:12.5px;color:var(--ink-3)">${esc(ROUTE_D[t.r])}</span></div>
+          ${tileLinkButton(t)}
         </div>
         <div class="leaf-b">
+          <div class="screen">
+            <p class="lead">${fillSmart((t.plain && t.plain.lead) || t.lead)}</p>
+            ${(t.plain && t.plain.steps && t.plain.steps.length) ? `<ol class="steps">${t.plain.steps.map(step => { const text = fillSmart(step); return text ? '<li>' + text + '</li>' : ''; }).join('')}</ol>` : ''}
+            ${(t.plain && t.plain.watch) ? `<p class="watch"><span class="wtag">Watch out</span> ${fillSmart(t.plain.watch)}</p>` : ''}
+          </div>
           <div class="lock">
             <span class="lock-l">This answer is different for every person</span>
             <p>Put in your Student ID and your date of birth, and this page will answer with your own dates, your employer and your deadlines, not general information. The date of birth is how the page knows it is you and not somebody looking you up.</p>
@@ -1199,7 +1694,8 @@ function renderLeaf(){
   }
   const youHtml = tileYou(t);
   const spec = builderFor(t);
-  const showAct = !spec || spec.keepAct || spec.withAct;
+  const needsButton = !spec && CHI_BUTTON[t.q];
+  const showAct = !!url || needsButton || (spec && (spec.keepAct || spec.withAct));
   const actHtml = !showAct ? '' : url
     ? '<a class="act" href="' + url + '" target="_blank" rel="noopener">' + esc(t.act.label) + '</a>'
     : '<button class="act' + (t.act.kind === 'answer' ? ' ghost' : '') + '" data-act="' + t.act.kind + '">' + esc(t.act.label) + '</button>';
@@ -1209,6 +1705,7 @@ function renderLeaf(){
       <div class="leaf-h">
         <h2>${esc(t.q)}</h2>
         <div class="leaf-meta"><span class="pill ${t.r}">${t.r}</span><span style="font-size:12.5px;color:var(--ink-3)">${esc(ROUTE_D[t.r])}</span></div>
+        ${tileLinkButton(t)}
       </div>
       <div class="leaf-b">
         ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
@@ -1230,7 +1727,7 @@ function renderLeaf(){
           </div>` : ''}
           ${t.need && t.need.length ? `<div class="need"><h4>What to have ready</h4><ul>${t.need.map(n=>fillSmart(n)).filter(Boolean).map(n=>`<li>${n}</li>`).join('')}</ul></div>` : ''}
         </details>
-        ${askHtml(t)}
+        ${(formSpec(t) && formSpec(t).demote) ? '<details class="still"><summary>Still need help?</summary><p class="askhint">I tried this and it did not work.</p>' + askHtml(t) + '</details>' : askHtml(t)}
         ${actHtml}
       </div>
     </article>`;
@@ -1426,20 +1923,24 @@ function renderId(){
    date of birth give the same answer, so nothing here can be used to confirm
    that an ID exists. After five misses the page stops answering for a minute.
    This is a courtesy limit only. The real limit belongs in the web app. */
-let tries = 0, coolUntil = 0;
+let tries = 0, coolUntil = 0, lookupGen = 0;
 
 const NOMATCH = 'That does not match a record. Check your Student ID, it is your record number in the CHI portal, and check your date of birth.';
 const THROTTLED = 'Too many tries. Wait a minute, then try again. If it still will not work, use the message button at the bottom of the page.';
 
+const LOOKUP_FAIL = 'We could not look you up just now. The answers on this page still work. Your own dates stay hidden until the lookup works.';
+function lookupFailHtml(){
+  return '<div class="iderr" role="alert">' + LOOKUP_FAIL + ' <button type="button" class="act" data-id="retry">Try again</button></div>';
+}
 function noteLookupFailure(e){
   const err = document.getElementById('iderr');
   if(e && e.kind === 'throttle'){
     coolUntil = Date.now() + 60000;
     tries = 0;
-    if(err) err.innerHTML = '<div class="iderr">' + THROTTLED + '</div>';
+    if(err) err.innerHTML = '<div class="iderr" role="alert">' + THROTTLED + '</div>';
     return;
   }
-  if(err) err.innerHTML = '';
+  if(err) err.innerHTML = lookupFailHtml();
 }
 
 async function chooseListed(i){
@@ -1477,6 +1978,12 @@ async function doLookup(){
   if(!v){ say('Put in your Student ID or your name as well.'); return; }
   if(!dob){ say('Put in your date of birth as well. It is how the page knows it is you.'); return; }
   if(err) err.innerHTML = '';
+  const gen = ++lookupGen;
+  const slowTimer = setTimeout(() => {
+    if(gen !== lookupGen) return;
+    const box = document.getElementById('iderr');
+    if(box && !box.innerHTML) box.innerHTML = '<div class="iderr" role="status">This is taking longer than usual. You can keep reading. Your own dates will show when the lookup finishes.</div>';
+  }, 8000);
 
   const miss = () => {
     tries++;
@@ -1501,6 +2008,9 @@ async function doLookup(){
     picks = res; pickDob = dob; idMode = 'pick'; renderId();
   }catch(e){
     noteLookupFailure(e);
+  }finally{
+    lookupGen++;
+    clearTimeout(slowTimer);
   }
 }
 
@@ -1516,6 +2026,19 @@ document.addEventListener('input', e => {
   if(btn) btn.disabled = !askReady(t, spec);
 });
 document.addEventListener('click', e => {
+  const check = e.target && e.target.closest && e.target.closest('[data-ask-check]');
+  if(check){
+    const t = T[state.leaf];
+    const id = check.dataset.askCheck;
+    const val = check.dataset.askValue;
+    const cur = t ? String(fieldValueAsk(t, {id:id}) || '') : '';
+    const parts = cur ? cur.split(', ').filter(Boolean) : [];
+    const at = parts.indexOf(val);
+    if(at >= 0) parts.splice(at, 1);
+    else parts.push(val);
+    setAskAnswer(id, parts.join(', '));
+    return;
+  }
   const choice = e.target && e.target.closest && e.target.closest('[data-ask-choice]');
   if(choice){
     setAskAnswer(choice.dataset.askChoice, choice.dataset.askValue);
@@ -1525,6 +2048,14 @@ document.addEventListener('click', e => {
   if(send){
     if(send.disabled) return;
     openAskMail();
+    return;
+  }
+  const tileCopy = e.target.closest('[data-tile-link]');
+  if(tileCopy){
+    const url = tileCopy.getAttribute ? (tileCopy.getAttribute('data-tile-link') || tileCopy.dataset.tileLink || '') : (tileCopy.dataset.tileLink || '');
+    try{ navigator.clipboard.writeText(url); }catch(err){}
+    tileCopy.textContent = 'Link copied';
+    setTimeout(()=>{ tileCopy.textContent = 'Copy link to this tile'; }, 1800);
     return;
   }
   const cp = e.target.closest('[data-copy]');
@@ -1545,7 +2076,7 @@ document.addEventListener('click', e => {
       if(d){ d.value=idb.dataset.d || ''; }
       doLookup(); return;
     }
-    if(k==='go'){ doLookup(); return; }
+    if(k==='go' || k==='retry'){ doLookup(); return; }
     if(k==='mode-id'){ idMode='id'; picks=[]; renderId(); return; }
     if(k==='pick'){ chooseListed(+idb.dataset.i); return; }
     if(k==='clear'){ setMe(null); idMode='id'; state.stage=null; state.leaf=null; renderId(); render(); return; }
@@ -1835,4 +2366,4 @@ function openQuestion(q){
   return true;
 }
 
-var BOOT = (async () => { await useLinkToken(); renderId(); render(); })();
+var BOOT = (async () => { await useLinkToken(); applyTileQuery(); renderId(); render(); })();
