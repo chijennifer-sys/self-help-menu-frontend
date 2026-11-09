@@ -1116,7 +1116,8 @@ test('training deck facts stay on the existing tiles', async () => {
 test('email guidance stays on the existing tiles', async () => {
   const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
   assert.equal((src.match(/\n\{s:'/g) || []).length, 72);
-  assert.equal(src.includes('MyProfile'), false);
+  assert.equal((src.match(/MyProfile/g) || []).length, 2);
+  assert.match(src, /https:\/\/wt\.chinet\.org\/Students\/MyProfile/);
   assert.equal(src.includes('docs.google.com'), false);
   assert.equal(/ask your agency|contact your agency|message your agency/i.test(src), false);
   const page = await loadPage({
@@ -1454,4 +1455,134 @@ test('job change and shorten program open the named Tally forms', async () => {
   search('early return', /I want to go home early/);
   search('quit program', /I want to go home early/);
   search('end program', /I want to go home early/);
+});
+
+test('guided emails use the staff subject and do not send themselves', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('an email builder must not look anyone up'); }
+  });
+  const record = {
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', embassyInterview: '2026-05-01',
+    dob: '2001-01-04', tok: 'secret-token-value', agency: 'AEX', coordinator: 'kathleen'
+  };
+  page.sandbox.setMe(record);
+  function mailOf(){
+    const url = page.mails[page.mails.length - 1];
+    const mail = parseMailto(url);
+    mail.cc = new URLSearchParams(url.slice(url.indexOf('?') + 1)).get('cc');
+    return mail;
+  }
+  function fill(spec){
+    spec.fields.forEach(field => {
+      if(field.when || field.prefill || field.lock) return;
+      let value = 'A short note';
+      if(field.type === 'choice') value = field.options[0];
+      else if(field.type === 'time') value = '15:00';
+      else if(field.type === 'date') value = field.max === 'dsEndPlus30' ? '2026-10-15' : '2026-07-01';
+      page.sandbox.setAskAnswer(field.id, value);
+    });
+  }
+
+  page.sandbox.openQuestion('How do I extend my insurance for my travel period');
+  let html = page.els.view.innerHTML;
+  assert.match(html, /50 dollars/);
+  assert.match(html, /Pay by card when CHI sends the request/);
+  assert.match(html, /at most 30 days after your program end date/);
+  assert.match(html, /Oct 15, 2026/);
+  assert.match(html, /data-ask-send="1" disabled/);
+  assert.equal(page.calls.length, 0);
+
+  page.sandbox.setAskAnswer('coverEnd', '2026-10-16');
+  page.sandbox.setAskAnswer('where', 'Boston, MA');
+  page.sandbox.setAskAnswer('depart', '2026-10-01');
+  assert.match(page.els.view.innerHTML, /more than 30 days after your program end date/);
+  assert.equal(page.sandbox.openAskMail(), false);
+  assert.equal(page.mails.length, 0);
+
+  page.sandbox.setAskAnswer('coverEnd', '2026-09-15');
+  assert.equal(page.sandbox.openAskMail(), false);
+
+  page.sandbox.setAskAnswer('coverEnd', '2026-10-15');
+  page.sandbox.setAskAnswer('__urgent', 'Yes');
+  const before = page.calls.length;
+  assert.equal(page.sandbox.openAskMail(), true);
+  assert.equal(page.calls.length, before);
+  let mail = mailOf();
+  assert.equal(mail.to, 'chiwt@chinet.org');
+  assert.equal(mail.cc, 'chikathleenr@chinet.org');
+  assert.equal(mail.subject, '⏰ Time Sensitive | Insurance Extension Request | Summer 2026 | 10001 | Ada Lovelace');
+  assert.match(mail.body, /Participant Name: Ada Lovelace/);
+  assert.match(mail.body, /Student ID: 10001/);
+  assert.match(mail.body, /Season: Summer 2026/);
+  assert.match(mail.body, /Employer: Aramark/);
+  assert.match(mail.body, /DS start: Jun 1, 2026/);
+  assert.match(mail.body, /DS end: Sep 15, 2026/);
+  assert.match(mail.body, /Coverage end date: Oct 15, 2026/);
+  assert.match(mail.body, /Where you will travel: Boston, MA/);
+  assert.match(mail.body, /Departure date from the USA: Oct 1, 2026/);
+  assert.match(mail.body, /Fee: 50 dollars\. Pay by card when CHI sends the request\./);
+  assert.equal(/card number|cvv|password|date of birth|2001-01-04|secret-token-value|\bAEX\b|agency/i.test(mail.body), false);
+  assert.equal(/https?:\/\//.test(mail.body), false);
+
+  page.sandbox.setMe(Object.assign({}, record, { coordinator: '' }));
+  page.sandbox.openQuestion('How do I extend my insurance for my travel period');
+  page.sandbox.setAskAnswer('coverEnd', '2026-10-15');
+  page.sandbox.setAskAnswer('where', 'Boston, MA');
+  page.sandbox.setAskAnswer('depart', '2026-10-01');
+  page.sandbox.setAskAnswer('__urgent', 'No');
+  assert.equal(page.sandbox.openAskMail(), true);
+  mail = mailOf();
+  assert.equal(mail.to, 'chiwt@chinet.org');
+  assert.equal(mail.cc, 'chijennifer@chinet.org');
+  assert.equal(mail.subject, 'Insurance Extension Request | Summer 2026 | 10001 | Ada Lovelace');
+
+  page.sandbox.setMe(record);
+  page.sandbox.openQuestion('Can I travel inside or outside the United States');
+  html = page.els.view.innerHTML;
+  assert.match(html, /Request a travel signature 2 weeks ahead/);
+  fill(page.sandbox.ASK_FORMS['Can I travel inside or outside the United States']);
+  assert.equal(page.sandbox.openAskMail(), true);
+  mail = mailOf();
+  assert.equal(mail.to, 'chiwt@chinet.org');
+  assert.equal(mail.cc, 'chikathleenr@chinet.org');
+  assert.equal(mail.subject, 'Travel Signature Request | Summer 2026 | 10001 | Ada Lovelace');
+  assert.match(mail.body, /Destination: A short note/);
+  assert.match(mail.body, /How CHI gets the DS-2019: I will email a photo of the full page/);
+  assert.match(mail.body, /Request a travel signature 2 weeks ahead/);
+  assert.equal(/2001-01-04|secret-token-value|\bAEX\b|agency/i.test(mail.body), false);
+
+  page.sandbox.openQuestion('I want to go home early');
+  assert.match(page.els.view.innerHTML, /Submit a shorten program request/);
+  assert.match(page.els.view.innerHTML, /tally\.so\/r\/pbLbZP/);
+
+  page.sandbox.openQuestion('Where do I go on my first day');
+  assert.match(page.els.view.innerHTML, /https:\/\/wt\.chinet\.org\/Students\/MyProfile/);
+  assert.match(page.els.view.innerHTML, /Print it and carry it with your DS-2019/);
+
+  Object.keys(page.sandbox.ASK_FORMS).forEach(q => {
+    const spec = page.sandbox.ASK_FORMS[q];
+    spec.fields.forEach(field => {
+      const banned = /date of birth|password|social security|card number|passport number|\bSSN\b/i;
+      assert.equal(banned.test(field.label), false, q + ' ' + field.label);
+    });
+    page.sandbox.openQuestion(q);
+    fill(spec);
+    page.sandbox.setAskAnswer('__urgent', 'No');
+    if(spec.fields.some(field => field.id === 'status')) page.sandbox.setAskAnswer('status', 'Approved');
+    assert.equal(page.sandbox.openAskMail(), true, q);
+    mail = mailOf();
+    const to = spec.to === 'chiwt' ? 'chiwt@chinet.org' : 'chikathleenr@chinet.org';
+    const cc = spec.cc === 'coordinator' ? 'chikathleenr@chinet.org' : spec.cc === 'jennifer' ? 'chijennifer@chinet.org' : null;
+    assert.equal(mail.to, to, q);
+    assert.equal(mail.cc, cc, q);
+    assert.equal(mail.subject, spec.topic + ' | Summer 2026 | 10001 | Ada Lovelace', q);
+    assert.match(mail.body, /Participant Name: Ada Lovelace/);
+    assert.match(mail.body, /Student ID: 10001/);
+    assert.equal(/2001-01-04|secret-token-value|\bAEX\b|\bagency\b/i.test(mail.body + '\n' + mail.subject), false, q);
+    assert.equal(page.calls.length, 0);
+  });
 });
