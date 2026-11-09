@@ -1341,4 +1341,40 @@ test('My next steps shows, hides, and skips missing fields', async () => {
   search('weed', /I feel unsafe or I am being harassed/);
   search('babysitter', /How do I get a second job approved/);
   search('15 days', /I want to go home early/);
+  search('returnee', /Can I come back next year/);
+  search('come back next year', /Can I come back next year/);
+  search('second season', /Can I come back next year/);
+});
+
+test('SEVIS, travel signature, returnee rules, and no CHI mail address', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 72);
+  assert.equal(/24 hours/i.test(src), false);
+  assert.equal(/West End Ave|Anchorage Court|San Rafael/i.test(src), false);
+  assert.match(src, /46208/);
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('these checks must not look anyone up'); }
+  });
+  page.sandbox.setMe({ sid: '10001', first: 'Ada', employer: 'Aramark', country: 'Peru', season: 'Summer 2026', dsEnd: '2026-09-15', arrival: '2026-05-28' });
+  page.sandbox.openQuestion('How do I validate my SEVIS record');
+  const sevis = page.els.view.innerHTML;
+  assert.match(sevis, /within 3 days of arrival/);
+  assert.equal(/24 hours|72 hours/i.test(sevis), false);
+  page.sandbox.openQuestion('Can I travel inside or outside the United States');
+  assert.match(page.els.view.innerHTML, /Request a travel signature 2 weeks ahead/);
+  page.sandbox.openQuestion('Can I travel before I go home');
+  assert.match(page.els.view.innerHTML, /Request a travel signature 2 weeks ahead/);
+  page.sandbox.openQuestion('Can I come back next year');
+  const back = page.els.view.innerHTML;
+  assert.match(back, /3-year maximum/);
+  assert.match(back, /self-placement/);
+  assert.match(back, /letter of intent/);
+  assert.equal(/agency/i.test(back), false);
+  page.sandbox.openQuestion('How do I get my final paycheck');
+  const pay = page.els.view.innerHTML;
+  assert.match(pay, /update your address with your employer and with your bank/i);
+  assert.match(pay, /CHI does not take your mail/);
+  assert.equal(/West End|Anchorage|San Rafael/i.test(pay), false);
 });
