@@ -543,7 +543,7 @@ body.locked .ask h1{opacity:.85}
 .bar button:hover{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
 
 /* board switcher chips */
-.chip{background:var(--panel); border:1px solid transparent; min-height:38px; padding:0 13px}
+.chip{background:var(--panel); border:1px solid transparent; min-height:44px; padding:0 13px}
 .chip:hover{background:var(--ink); border-color:var(--ink); color:#FFFFFF}
 .chip:hover .dot{background:#FFFFFF}
 .chip.on{background:var(--chi); border-color:var(--chi); color:var(--on-chi)}
@@ -561,7 +561,7 @@ body.locked .ask h1{opacity:.85}
 .copy:hover{background:var(--chi); color:var(--on-chi)}
 .idskip{background:var(--panel); color:var(--ink-2); padding:12px}
 .idskip:hover{background:var(--ink); color:#FFFFFF}
-.iconbtn{background:var(--panel); width:36px; height:36px}
+.iconbtn{background:var(--panel); width:44px; height:44px}
 @media (max-width:379px){
   .mark-txt{font-size:12.5px}
   .mark-rule{width:16px}
@@ -573,7 +573,7 @@ body.locked .ask h1{opacity:.85}
 .pick:hover{background:var(--card); border-color:var(--chi)}
 .strip button{background:var(--panel); padding:7px 11px; min-height:34px; font-size:12px}
 .strip button:hover{background:var(--chi); color:var(--on-chi)}
-.viewsw button{min-height:36px; padding:0 11px}
+.viewsw button{min-height:44px; padding:0 11px}
 .idrow input{height:46px}
 .search{height:46px}
 
@@ -609,8 +609,19 @@ body.locked .ask h1{opacity:.85}
   .mark{gap:8px}
   .mark-rule{width:14px}
   .mark-txt{font-size:12.5px}
-  .iconbtn{width:32px; height:32px}
-  .viewsw button{padding:0 8px; font-size:10.5px; min-height:32px}
+  .iconbtn{width:44px; height:44px}
+  .viewsw button{padding:0 8px; font-size:12px; min-height:44px}
+}
+@media (max-width:400px){
+  .choices{flex-direction:column}
+  .choice{width:100%; text-align:left}
+  .askq input, .askq textarea, input[type="date"], input[type="time"]{
+    width:100%; max-width:100%; font-size:16px; min-height:48px;
+  }
+  .bar button, .chip, .crumb button, .search button, .strip button, .copy, .idskip, .iconbtn, .viewsw button{
+    min-height:44px;
+  }
+  .iconbtn{width:44px; height:44px}
 }
 @media (max-width:339px){
   .mark-txt{font-size:11.5px}

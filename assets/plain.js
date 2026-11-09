@@ -40,7 +40,7 @@ const PLAIN = {
 'Where do I enter my flight details': {
   lead:'Enter your flight at wt.chinet.org as soon as you book.',
   steps:['Use the last U.S. airport, not a stop on the way.','Save each flight before you add the next one.','Put the arrival time in the arrival section only.','Landing late? Stay at a hotel and travel in daylight.'],
-  watch:'Most employers do not pick you up from the airport.'
+  watch:'Some employers pick you up. Check your job offer.'
 },
 'Where do I verify my housing': {
   lead:'Verify housing at least 4 weeks before you arrive.',
@@ -138,9 +138,9 @@ const PLAIN = {
   watch:'Unsafe driving? Write down the time and tell your manager.'
 },
 'I need casino fingerprinting': {
-  lead:'CHI books casino fingerprinting. You cannot start on the floor until it clears.',
+  lead:'CHI books casino fingerprinting. You cannot start until it clears.',
   steps:['You do not book it. Your employer does not book it.','Take your passport and your DS-2019.','Take your Social Security receipt if you have one.','Ask your manager what the fee is before you go.'],
-  watch:'Most employers take the fee from your first pay.'
+  watch:'Some employers take this fee from the first paycheck. Ask your manager.'
 },
 'I moved to a new address': {
   lead:'Update your address at wt.chinet.org within 10 days.',
@@ -230,7 +230,7 @@ const PLAIN = {
 'I am sick or I am hurt': {
   lead:'Not an emergency? Do not start at the emergency room.',
   steps:['Start with free Teladoc in the USA.','Call 1-800-835-2362. ZIP code 46208.','A walk-in clinic is 0 dollars. Urgent care is 25.','Do not pay a bill yourself. Send it through the Student Zone.'],
-  watch:'A real emergency: call 911. At an ER you pay the first 350 dollars.'
+  watch:'A real emergency: call 911. An ER starts at 350 dollars.'
 },
 'I want to see a doctor': {
   lead:'Start with free Teladoc, after your cover has started.',
@@ -253,7 +253,7 @@ const PLAIN = {
   watch:'Keep your passport and DS-2019 locked at home, not at work.'
 },
 'I am struggling or homesick': {
-  lead:'Weeks 3 and 4 are often the hardest. It can ease in about 10 days.',
+  lead:'Some people find weeks 3 and 4 the hardest. It can ease in about 10 days.',
   steps:['Counseling in your plan is free.','Register at dialcare.com/verify.','Or call DialCare at 1-855-335-2255.','This is not for immediate danger.'],
   watch:'In immediate danger, call 911, then the CHI line.'
 },

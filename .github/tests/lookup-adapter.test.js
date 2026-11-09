@@ -1953,3 +1953,85 @@ test('personalized lines stay readable with missing or edge-case roster data', a
   page.sandbox.openQuestion('I need to change my start date');
   assert.equal(page.els.view.innerHTML.includes('planned the season'), false);
 });
+
+test('the top questions find the right tile in the first three results', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('search must not look anyone up'); }
+  });
+  function titles(word){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    const html = page.els.view.innerHTML;
+    assert.equal(html.includes('Nothing matches'), false, word);
+    return [...html.matchAll(/<span class="lab">([^<]+)<\/span>/g)].map(m => m[1]);
+  }
+  const cases = [
+    ['go home', 'I want to go home early'],
+    ['finish early', 'I want to go home early'],
+    ['grace period', 'When do I have to leave the United States'],
+    ['paycheck', 'I did not get my paycheck'],
+    ['salary', 'My pay is wrong'],
+    ['manager', 'I have a problem with my manager'],
+    ['fired', 'I lost my job'],
+    ['housing', 'Where do I verify my housing'],
+    ['portal', 'I cannot get into my CHI portal'],
+    ['quit', 'Can I change to a different employer'],
+    ['hours', 'I am not getting enough hours'],
+    ['sick', 'I am sick or I am hurt'],
+    ['doctor', 'I want to see a doctor'],
+    ['accident', 'I was in an accident'],
+    ['scooter', 'I was in an accident'],
+    ['first day', 'Where do I go on my first day'],
+    ['second job', 'How do I get a second job approved'],
+    ['ssn', 'How do I apply for my Social Security Number'],
+    ['social', 'How do I apply for my Social Security Number'],
+    ['sevis', 'How do I validate my SEVIS record'],
+    ['when do i start', 'When do I start working'],
+    ['tax', 'What tax comes out of my pay'],
+    ['next year', 'Can I come back next year'],
+    ['bus', 'How do I get to work'],
+    ['fly', 'Where do I enter my flight details'],
+    ['bank', 'How do I open a US bank account'],
+    ['visa denied', 'Where do I enter my visa results'],
+    ['fingerprint', 'I need casino fingerprinting'],
+    ['cruise', 'Can I travel inside or outside the United States'],
+    ['orientation', 'When is the next online orientation'],
+    ['phone', 'How do I get a US phone number'],
+    ['i94', 'How do I get my I-94'],
+    ['pasport', 'I lost my passport or another document'],
+    ['evaluation', 'My monthly evaluation'],
+    ['time off', 'My time off was refused'],
+    ['scam', 'Can CHI check my housing is not a scam']
+  ];
+  assert.ok(cases.length >= 30);
+  cases.forEach(([word, title]) => {
+    const found = titles(word);
+    const at = found.indexOf(title);
+    assert.ok(at >= 0 && at < 3, word + ' → ' + found.slice(0, 3).join(' | '));
+  });
+
+  const started = new Date();
+  started.setDate(started.getDate() - 20);
+  const startIso = started.getFullYear() + '-' + String(started.getMonth() + 1).padStart(2, '0') + '-' + String(started.getDate()).padStart(2, '0');
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    employer: 'Aramark', arrivalAirport: 'ACY', job: 'Server',
+    dsStart: startIso, dsEnd: '2027-03-15'
+  });
+  page.sandbox.openQuestion('Where do I enter my flight details');
+  assert.match(page.els.view.innerHTML, /Some employers pick you up/);
+  assert.match(page.els.view.innerHTML, /ACY/);
+  assert.match(page.els.view.innerHTML, /job offer is your employer info/);
+  page.sandbox.openQuestion('I need casino fingerprinting');
+  assert.match(page.els.view.innerHTML, /Some employers take this fee/);
+  assert.match(page.els.view.innerHTML, /Ask <b>Aramark<\/b>/);
+  page.sandbox.openQuestion('I am struggling or homesick');
+  assert.match(page.els.view.innerHTML, /Some people find weeks 3 and 4/);
+  assert.match(page.els.view.innerHTML, /You are in weeks 3 or 4/);
+  page.sandbox.openQuestion('I am sick or I am hurt');
+  assert.match(page.els.view.innerHTML, /Check your insurance card or plan for your exact cost|Check your card for the exact cost/);
+  assert.match(page.els.view.innerHTML, /350/);
+  assert.match(page.els.view.innerHTML, /25/);
+});

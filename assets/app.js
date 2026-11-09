@@ -118,6 +118,9 @@ function enrich(p){
   m.agencyName = AGENCY_NAME[p.agency] || p.agencyName || '';
   // Living in the USA is a board, not a moment, so nothing lands there by date.
   m.stage = (day === null) ? null : day < 0 ? 'home' : day <= 14 ? 'arr' : (m.daysLeft !== null && m.daysLeft <= 14) ? 'end' : (m.daysLeft !== null && m.daysLeft < 0) ? 'end' : 'work';
+  m.hardWeeks = (typeof day === 'number' && day >= 14 && day <= 28)
+    ? 'You are in weeks 3 or 4. These weeks are often the hardest.'
+    : '';
   const rawEmail = typeof p.email === 'string' ? p.email.trim() : '';
   if(typeof p.emailMask === 'string' && p.emailMask.trim() && !rawEmail){
     m.emailMask = safeEmailMask(p.emailMask);
@@ -730,11 +733,116 @@ function qrow(t){
   </button>`;
 }
 
+const SEARCH_STOP = { do:1, i:1, my:1, the:1, a:1, an:1, to:1, of:1, for:1, and:1, is:1, me:1, in:1, on:1, or:1, it:1 };
+const SEARCH_FIX = {
+  pasport:'passport', pasaport:'passport', passort:'passport',
+  paychek:'paycheck', cheque:'paycheck', socail:'social', securty:'security',
+  acident:'accident', doktor:'doctor', sik:'sick', denyed:'denied',
+  housin:'housing', sevice:'sevis', fly:'flight', flying:'flight',
+  i94:'i-94', salary:'salary'
+};
+/* Lower rank = asked more often in the WhatsApp and case notes. */
+const ASK_RANK = {
+  'I want to go home early':1,
+  'When do I have to leave the United States':1,
+  'I did not get my paycheck':2,
+  'How do I get my final paycheck':2,
+  'My pay is wrong':2,
+  'I have a problem with my manager':3,
+  'I have a problem with a coworker':3,
+  'I feel unsafe or I am being harassed':3,
+  'I am struggling or homesick':3,
+  'I lost my job':4,
+  'I was sent home from a shift':4,
+  'Where do I verify my housing':5,
+  'There is a problem at my housing':5,
+  'Help me find housing':5,
+  'I am being evicted':5,
+  'I cannot get into my CHI portal':6,
+  'Where can I find my sponsor letter':6,
+  'Can I change to a different employer':7,
+  'I am not getting enough hours':8,
+  'I am sick or I am hurt':9,
+  'I want to see a doctor':9,
+  'I was in an accident':9,
+  'Where do I find my insurance card':9,
+  'I have a toothache':9,
+  'Where do I go on my first day':10,
+  'I need to change my start date':10,
+  'How early can I arrive':10,
+  'How do I get a second job approved':11,
+  'How do I apply for my Social Security Number':12,
+  'Can I start my Social Security':12,
+  'My Social Security card has not come':12,
+  'How do I validate my SEVIS record':13,
+  'When do I start working':14,
+  'How do I fill in my employment paperwork':14,
+  'What tax comes out of my pay':15,
+  'There is Social Security or Medicare on my check':15,
+  'How do I claim my tax overages back':15,
+  'Can I come back next year':16,
+  'How do I get to work':17,
+  'Where do I enter my flight details':18,
+  'What airport should I fly into':18,
+  'How do I open a US bank account':19,
+  'Should I close my US bank account':19,
+  'My visa appointment':21,
+  'Where do I enter my visa results':21,
+  'Where is my DS-2019':21,
+  'I need casino fingerprinting':22,
+  'My casino fingerprinting':22,
+  'Can I travel inside or outside the United States':23,
+  'Can I travel before I go home':23,
+  'When is the next online orientation':24,
+  'Can I change my position or department':25,
+  'How do I get a US phone number':28,
+  'How do I get my I-94':29,
+  'When should I contact my employer':30,
+  'I lost my passport or another document':31,
+  'My monthly evaluation':32,
+  'My time off was refused':33,
+  'Can CHI check my housing is not a scam':35
+};
+function searchTokens(raw){
+  const words = String(raw || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean);
+  const out = [];
+  words.forEach(word => {
+    if(SEARCH_STOP[word]) return;
+    const fixed = SEARCH_FIX[word] || word;
+    String(fixed).split(' ').forEach(part => {
+      if(part && !SEARCH_STOP[part] && out.indexOf(part) < 0) out.push(part);
+    });
+  });
+  return out;
+}
+function tokenInHay(hay, tok){
+  if(tok === 'i-94' || tok === 'i94') return /i-?94/.test(hay);
+  return hay.indexOf(tok) >= 0;
+}
+function searchHits(query){
+  const tokens = searchTokens(query);
+  if(!tokens.length) return [];
+  const scored = [];
+  T.forEach((t, i) => {
+    const hay = (t.q + ' ' + t.sub + ' ' + t.k).toLowerCase();
+    if(!tokens.every(tok => tokenInHay(hay, tok))) return;
+    const title = t.q.toLowerCase();
+    const sub = String(t.sub || '').toLowerCase();
+    let score = 200 - (ASK_RANK[t.q] || 80);
+    tokens.forEach(tok => {
+      if(tokenInHay(title, tok)) score += 80;
+      else if(tokenInHay(sub, tok)) score += 30;
+      else score += 10;
+    });
+    scored.push({ t:t, score:score, i:i });
+  });
+  scored.sort((a, b) => b.score - a.score || a.i - b.i);
+  return scored.map(row => row.t);
+}
 function renderSearch(){
-  const q = state.q.toLowerCase();
-  const hits = T.filter(t => (t.q+' '+t.sub+' '+t.k).toLowerCase().includes(q));
+  const hits = searchHits(state.q);
   view.innerHTML = hits.length
-    ? `<div class="sect-h" style="padding-top:14px"><h2>${hits.length} ${hits.length===1?'result':'results'}</h2><p>Across every stage of the program.</p></div>
+    ? `<div class="sect-h" style="padding-top:14px"><h2>${hits.length} ${hits.length===1?'result':'results'}</h2><p>The most asked topics come first.</p></div>
        <div class="grid">${hits.map(t=>qrow(t)).join('')}</div>`
     : `<div class="empty">Nothing matches that word.<br>Try SSN, hours, housing, visa or second job.</div>`;
 }
