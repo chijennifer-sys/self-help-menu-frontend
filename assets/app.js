@@ -66,6 +66,7 @@ function enrich(p){
   m.day = day; m.len = len;
   m.daysLeft = en ? days(en, TODAY) : null;
   m.ssnBy = en ? FMT(addDays(en, -45)) : '';
+  m.dsEndMinus21 = en ? FMT(addDays(en, -21)) : '';
   m.insStartF = st ? FMT(addDays(st, -7)) : '';
   m.sevisDueF = ar ? FMT(addDays(ar, 3)) : '';
   m.sevisBy = m.sevisDueF;
@@ -76,6 +77,17 @@ function enrich(p){
   m.firstName = asText(p.firstName || p.first);
   m.winterNote = /\bwinter\b/i.test(asText(p.season))
     ? 'This is a winter season. Watch for frostbite, dress in layers, and expect short days in small towns.'
+    : '';
+  m.winterTaxNote = /\bwinter\b/i.test(asText(p.season))
+    ? 'This winter season crosses two calendar years, so you should get two W-2s, one for each tax year.'
+    : '';
+  m.hoursHolidayNote = /\bwinter\b/i.test(asText(p.season))
+    ? 'After New Year, winter hours often drop even if your end date is later. Save money while the hours are high.'
+    : /\bsummer\b/i.test(asText(p.season))
+    ? 'After Labor Day, summer hours often drop even if your end date is later. Save money while the hours are high.'
+    : 'After a major holiday, hours often drop even if your end date is later. Save money while the hours are high.';
+  m.plattsburghNote = /plattsburgh/i.test(asText(p.ssaOfficeName))
+    ? 'Plattsburgh is about an hour away. Apply online first. Book only after the activation email, on a day your manager agrees. Share the ride with coworkers when you can.'
     : '';
   ['sevisValidationDate','embassyInterview','dateVisaReceived','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd'].forEach(k => {
     if(m[k] && /^\d{4}-\d{2}-\d{2}/.test(String(m[k]))) m[k] = FMT(D(String(m[k]).slice(0,10)));
@@ -169,7 +181,7 @@ function looksLikePerson(o){
 function adaptFull(raw){
   if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
-  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone'].forEach(k => {
+  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone','employerAddress'].forEach(k => {
     const v = asText(raw[k]);
     if(v) out[k] = v;
   });

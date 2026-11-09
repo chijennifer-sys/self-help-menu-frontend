@@ -1107,6 +1107,84 @@ test('training deck facts stay on the existing tiles', async () => {
   });
 });
 
+test('email guidance stays on the existing tiles', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+  assert.equal(src.includes('MyProfile'), false);
+  assert.equal(src.includes('docs.google.com'), false);
+  assert.equal(/ask your agency|contact your agency|message your agency/i.test(src), false);
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('guidance checks must not look anyone up'); }
+  });
+  const expectF = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', country: 'Peru', season: 'Summer 2026',
+    employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', arrival: '2026-05-28',
+    hasSSN: 'No', ssaOfficeName: 'Plattsburgh SSA', ssaZip: '12901'
+  });
+  page.sandbox.openQuestion('Where do I verify my housing');
+  assert.match(page.els.view.innerHTML, /at least 4 weeks before you arrive/);
+  assert.equal(/30 days before arrival/i.test(page.els.view.innerHTML), false);
+
+  page.sandbox.openQuestion('Can I start my Social Security');
+  const ssn = page.els.view.innerHTML;
+  assert.match(ssn, /online Social Security application before you fly/);
+  assert.match(ssn, /about 7 business days/);
+  assert.match(ssn, /visa activation email/);
+  assert.match(ssn, /ssa\.gov\/number-card\/request-number-first-time/);
+  assert.match(ssn, /Plattsburgh is about an hour away/);
+  assert.equal(ssn.includes('undefined'), false);
+
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', dsEnd: '2026-09-15', hasSSN: 'No',
+    ssaOfficeName: 'Ocean City SSA', season: 'Summer 2026'
+  });
+  page.sandbox.openQuestion('Can I start my Social Security');
+  assert.equal(page.els.view.innerHTML.includes('Plattsburgh'), false);
+  page.sandbox.openQuestion('My Social Security card has not come');
+  assert.match(page.els.view.innerHTML, new RegExp(expectF('2026-08-25').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(page.els.view.innerHTML, /every employer, including a second job/i);
+
+  page.sandbox.openQuestion('How do I get a second job approved');
+  const job = page.els.view.innerHTML;
+  assert.match(job, /10pm to 6am/);
+  assert.match(job, /valet/);
+  assert.match(job, /Uber, Lyft, or DoorDash/);
+  assert.match(job, /warehouse/);
+  assert.match(job, /blood or bodily fluids/);
+
+  page.sandbox.openQuestion('How do I extend my insurance for my travel period');
+  assert.match(page.els.view.innerHTML, /50 dollars/);
+
+  page.sandbox.openQuestion('Where do I enter my flight details');
+  assert.match(page.els.view.innerHTML, /Message my CHI team/);
+  assert.equal(/agency/i.test(page.els.view.innerHTML), false);
+
+  page.sandbox.openQuestion('When do I have to leave the United States');
+  assert.match(page.els.view.innerHTML, /cannot extend your J-1/);
+  assert.equal(/contact your agency|home agency|ask your agency|message your agency/i.test(page.els.view.innerHTML), false);
+
+  page.sandbox.openQuestion('Something else about my job');
+  const who = page.els.view.innerHTML;
+  assert.match(who, /Who should I ask/);
+  assert.match(who, /federal holidays/);
+  assert.equal(who.includes('911'), false);
+  assert.equal(/agency/i.test(who), false);
+
+  function search(word){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    assert.equal(page.els.view.innerHTML.includes('Nothing matches'), false, word);
+  }
+  search('sprintax');
+  search('plattsburgh');
+  search('valet');
+  search('esta');
+});
+
 test('orientation schedule converts Peru, hides a past week, and falls back when empty', async () => {
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
