@@ -10,7 +10,7 @@
   /* charcoal and surface */
   --ink:#303030;               /* body and headline ink, 13:1 on surface */
   --ink-2:#5C5C5C;
-  --ink-3:#8A8A8A;
+  --ink-3:#595959;
   --ground:#FFFFFF;
   --card:#FFFFFF;
   --raise:#FAFAFA;
@@ -354,7 +354,7 @@ body.locked .ask h1{opacity:.85}
   padding:7px 16px calc(11px + env(safe-area-inset-bottom, 0px));
   background:linear-gradient(to top, var(--ground) 62%, transparent);
 }
-.bar-in{max-width:var(--wrap); margin:0 auto; display:flex; gap:7px}
+.bar-in{max-width:var(--wrap); margin:0 auto; display:flex; flex-wrap:wrap; gap:7px}
 .whatsappnote{
   max-width:var(--wrap); margin:6px auto 0; text-align:center;
   font-size:12.5px; line-height:1.35; color:var(--ink-2);
@@ -365,7 +365,7 @@ body.locked .ask h1{opacity:.85}
   font-size:13.5px; font-weight:700; box-shadow:none; color:var(--ink);
 }
 .bar button svg{flex:0 0 auto}
-.bar button span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.bar button span{white-space:normal}
 .bar button:hover{border-color:var(--chi); color:var(--chi)}
 #portal{flex:0 1 auto}
 
@@ -419,7 +419,8 @@ body.locked .ask h1{opacity:.85}
 .askerr, .asknote{color:var(--chi); font-size:16px; line-height:1.45}
 .choices{display:flex; flex-wrap:wrap; gap:8px}
 .choice{border:1px solid #303030; background:#fff; color:#303030; min-height:44px; padding:8px 12px; font:inherit; font-size:16px}
-.choice[aria-pressed="true"]{background:var(--chi); color:#fff; border-color:var(--chi)}
+.choice[aria-pressed="true"]{background:var(--chi); color:#fff; border-color:var(--chi); font-weight:700}
+.choice[aria-pressed="true"]::before{content:"Selected. "}
 .leaf-b p, .lead, .you, .nextitem{font-size:16.5px; line-height:1.6}
 .foot{border-top:1px solid var(--rule); margin-top:30px; padding:16px 2px 0; font-size:12.5px; color:var(--ink-3); line-height:1.6}
 .empty{text-align:center; padding:40px 16px; color:var(--ink-3); font-size:14.5px}
@@ -641,3 +642,10 @@ body.locked .ask h1{opacity:.85}
 .top{border-bottom:1px solid var(--rule)}
 @media (max-width:374px){ .mark-lockup{height:23px} }
 @media (max-width:339px){ .mark-lockup{height:21px} }
+:focus-visible{outline:3px solid var(--chi); outline-offset:2px}
+h2, .lab, .lead, .leaf{overflow-wrap:anywhere}
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important}
+}
+.foryou{margin:8px 0 14px}
+.foryou h2{font-size:18px; margin:0 0 4px}

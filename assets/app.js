@@ -719,8 +719,42 @@ function renderStage(){
   view.innerHTML = `
     ${ME ? nextStepsHtml() : ''}
     ${nav}
+    ${forYouHtml()}
     ${headline}
     ${inner}`;
+}
+const PHASE_TILES = {
+  before:['My visa appointment','Where is my DS-2019','Where do I enter my flight details','Where do I verify my housing','What documents do I need','How early can I arrive'],
+  first:['Where do I go on my first day','How do I validate my SEVIS record','How do I get my I-94','How do I apply for my Social Security Number','How do I get a US phone number','My housing when I land'],
+  during:['I am not getting enough hours','I did not get my paycheck','How do I get a second job approved','I have a problem with my manager','I am sick or I am hurt','Who do I contact for help'],
+  last:['I want to go home early','When do I have to leave the United States','How do I get my final paycheck','Can I travel before I go home','How do I extend my insurance for my travel period','Should I close my US bank account'],
+  after:['When do I have to leave the United States','How do I get my final paycheck','How do I claim my tax overages back','Should I close my US bank account','Can I come back next year','My monthly evaluation']
+};
+const PHASE_LINE = {
+  before:'You have not arrived yet.',
+  first:'You are in your first 2 weeks.',
+  during:'You are in the middle of your program.',
+  last:'You are in the last 3 weeks.',
+  after:'Your program end date has passed.'
+};
+function programPhase(){
+  if(!ME) return '';
+  const hasStart = ME.day !== null && ME.day !== undefined;
+  const hasEnd = ME.daysLeft !== null && ME.daysLeft !== undefined;
+  if(!hasStart && !hasEnd) return '';
+  if(hasEnd && ME.daysLeft < 0) return 'after';
+  if(hasStart && ME.day < 0) return 'before';
+  if(hasEnd && ME.daysLeft <= 21) return 'last';
+  if(hasStart && ME.day <= 13) return 'first';
+  return 'during';
+}
+function forYouHtml(){
+  const phase = programPhase();
+  const names = PHASE_TILES[phase];
+  if(!names) return '';
+  const tiles = names.map(q => T.find(t => t.q === q)).filter(Boolean);
+  if(tiles.length < 6) return '';
+  return '<section class="foryou"><h2>For you right now</h2><p>' + esc(PHASE_LINE[phase]) + '</p><div class="grid">' + tiles.map(qrow).join('') + '</div></section>';
 }
 
 function qrow(t){
@@ -1050,8 +1084,7 @@ const askState = {};
 const CHIWT = 'chiwt@chinet.org';
 
 function shortFmt(d){
-  if(!d) return '';
-  return d.toLocaleDateString('en-US', { day:'numeric', month:'short', year:'numeric' });
+  return FMT(d);
 }
 function isoOf(d){
   if(!d) return '';
@@ -1448,10 +1481,7 @@ function travelBody(t){
 function rosterMailLines(spec){
   const lines = [];
   const put = (label, value) => lines.push(label + ': ' + (asText(value) || 'Not on file'));
-  put('Participant Name', ME && ME.name);
-  put('Student ID', ME && ME.sid);
   put('Season', ME && ME.season);
-  put('Employer', ME && ME.employer);
   put('Location', ME && ME.location);
   put('Position/Job Title', ME && ME.job);
   const start = rosterIso('dsStart');
@@ -1467,10 +1497,22 @@ function rosterMailLines(spec){
   }
   return lines;
 }
+function staffFactLines(){
+  const put = (label, value) => label + ': ' + (asText(value) || 'Not on file');
+  const start = rosterIso('dsStart');
+  const end = rosterIso('dsEnd');
+  const dates = (start && end) ? (shortFmt(D(start)) + ' to ' + shortFmt(D(end))) : (start ? shortFmt(D(start)) : (end ? shortFmt(D(end)) : 'Not on file'));
+  return [
+    put('Participant Name', ME && ME.name),
+    put('Student ID', ME && ME.sid),
+    put('Employer', ME && ME.employer),
+    'Program dates: ' + dates
+  ];
+}
 function askBody(t, spec){
   if(spec.layout === 'travel') return travelBody(t);
-  const lines = ['Hello,', ''].concat(rosterMailLines(spec));
-  lines.push('', 'Student ID: ' + (asText(ME && ME.sid) || 'Not on file'), '');
+  const lines = ['Hello,', ''].concat(staffFactLines());
+  lines.push('');
   const answerLines = { top: [], rest: [] };
   spec.fields.forEach(field => {
     if(!fieldShown(t, field)) return;
@@ -1481,6 +1523,8 @@ function askBody(t, spec){
   });
   answerLines.top.forEach(line => lines.push(line));
   if(answerLines.top.length) lines.push('');
+  rosterMailLines(spec).forEach(line => lines.push(line));
+  lines.push('');
   answerLines.rest.forEach(line => lines.push(line));
   (spec.fixed || []).forEach(line => lines.push(line));
   if(spec.note) lines.push(spec.note);
@@ -1618,6 +1662,11 @@ function renderLeaf(){
           ${tileLinkButton(t)}
         </div>
         <div class="leaf-b">
+          <div class="screen">
+            <p class="lead">${fillSmart((t.plain && t.plain.lead) || t.lead)}</p>
+            ${(t.plain && t.plain.steps && t.plain.steps.length) ? `<ol class="steps">${t.plain.steps.map(step => { const text = fillSmart(step); return text ? '<li>' + text + '</li>' : ''; }).join('')}</ol>` : ''}
+            ${(t.plain && t.plain.watch) ? `<p class="watch"><span class="wtag">Watch out</span> ${fillSmart(t.plain.watch)}</p>` : ''}
+          </div>
           <div class="lock">
             <span class="lock-l">This answer is different for every person</span>
             <p>Put in your Student ID and your date of birth, and this page will answer with your own dates, your employer and your deadlines, not general information. The date of birth is how the page knows it is you and not somebody looking you up.</p>
@@ -1874,20 +1923,24 @@ function renderId(){
    date of birth give the same answer, so nothing here can be used to confirm
    that an ID exists. After five misses the page stops answering for a minute.
    This is a courtesy limit only. The real limit belongs in the web app. */
-let tries = 0, coolUntil = 0;
+let tries = 0, coolUntil = 0, lookupGen = 0;
 
 const NOMATCH = 'That does not match a record. Check your Student ID, it is your record number in the CHI portal, and check your date of birth.';
 const THROTTLED = 'Too many tries. Wait a minute, then try again. If it still will not work, use the message button at the bottom of the page.';
 
+const LOOKUP_FAIL = 'We could not look you up just now. The answers on this page still work. Your own dates stay hidden until the lookup works.';
+function lookupFailHtml(){
+  return '<div class="iderr" role="alert">' + LOOKUP_FAIL + ' <button type="button" class="act" data-id="retry">Try again</button></div>';
+}
 function noteLookupFailure(e){
   const err = document.getElementById('iderr');
   if(e && e.kind === 'throttle'){
     coolUntil = Date.now() + 60000;
     tries = 0;
-    if(err) err.innerHTML = '<div class="iderr">' + THROTTLED + '</div>';
+    if(err) err.innerHTML = '<div class="iderr" role="alert">' + THROTTLED + '</div>';
     return;
   }
-  if(err) err.innerHTML = '';
+  if(err) err.innerHTML = lookupFailHtml();
 }
 
 async function chooseListed(i){
@@ -1925,6 +1978,12 @@ async function doLookup(){
   if(!v){ say('Put in your Student ID or your name as well.'); return; }
   if(!dob){ say('Put in your date of birth as well. It is how the page knows it is you.'); return; }
   if(err) err.innerHTML = '';
+  const gen = ++lookupGen;
+  const slowTimer = setTimeout(() => {
+    if(gen !== lookupGen) return;
+    const box = document.getElementById('iderr');
+    if(box && !box.innerHTML) box.innerHTML = '<div class="iderr" role="status">This is taking longer than usual. You can keep reading. Your own dates will show when the lookup finishes.</div>';
+  }, 8000);
 
   const miss = () => {
     tries++;
@@ -1949,6 +2008,9 @@ async function doLookup(){
     picks = res; pickDob = dob; idMode = 'pick'; renderId();
   }catch(e){
     noteLookupFailure(e);
+  }finally{
+    lookupGen++;
+    clearTimeout(slowTimer);
   }
 }
 
@@ -2014,7 +2076,7 @@ document.addEventListener('click', e => {
       if(d){ d.value=idb.dataset.d || ''; }
       doLookup(); return;
     }
-    if(k==='go'){ doLookup(); return; }
+    if(k==='go' || k==='retry'){ doLookup(); return; }
     if(k==='mode-id'){ idMode='id'; picks=[]; renderId(); return; }
     if(k==='pick'){ chooseListed(+idb.dataset.i); return; }
     if(k==='clear'){ setMe(null); idMode='id'; state.stage=null; state.leaf=null; renderId(); render(); return; }

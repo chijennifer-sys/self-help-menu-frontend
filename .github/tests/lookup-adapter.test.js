@@ -1548,7 +1548,7 @@ test('guided emails use the staff subject and do not send themselves', async () 
   assert.match(html, /50 dollars/);
   assert.match(html, /Pay by card before your program end date/);
   assert.match(html, /at most 30 days after your program end date/);
-  assert.match(html, /Oct 15, 2026/);
+  assert.match(html, /October 15, 2026/);
   assert.match(html, /data-ask-send="1" disabled/);
   assert.equal(page.calls.length, 0);
 
@@ -1576,11 +1576,11 @@ test('guided emails use the staff subject and do not send themselves', async () 
   assert.match(mail.body, /Student ID: 10001/);
   assert.match(mail.body, /Season: Summer 2026/);
   assert.match(mail.body, /Employer: Aramark/);
-  assert.match(mail.body, /DS start: Jun 1, 2026/);
-  assert.match(mail.body, /DS end: Sep 15, 2026/);
-  assert.match(mail.body, /Coverage end date: Oct 15, 2026/);
+  assert.match(mail.body, /DS start: June 1, 2026/);
+  assert.match(mail.body, /DS end: September 15, 2026/);
+  assert.match(mail.body, /Coverage end date: October 15, 2026/);
   assert.match(mail.body, /Where you will travel: Boston, MA/);
-  assert.match(mail.body, /Departure date from the USA: Oct 1, 2026/);
+  assert.match(mail.body, /Departure date from the USA: October 1, 2026/);
   assert.match(mail.body, /Fee: 50 dollars\. Pay by card before your program end date\./);
   assert.equal(/card number|cvv|password|date of birth|2001-01-04|secret-token-value|\bAEX\b|agency/i.test(mail.body), false);
   assert.equal(/https?:\/\//.test(mail.body), false);
@@ -2034,4 +2034,99 @@ test('the top questions find the right tile in the first three results', async (
   assert.match(page.els.view.innerHTML, /Check your insurance card or plan for your exact cost|Check your card for the exact cost/);
   assert.match(page.els.view.innerHTML, /350/);
   assert.match(page.els.view.innerHTML, /25/);
+});
+
+test('staff emails lead with the decision facts and phases pick six tiles', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('phase and email checks must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', country: 'Peru', coordinator: 'kathleen'
+  });
+  page.sandbox.openQuestion('I was in an accident');
+  const story = 'I was riding a rented scooter. The front wheel locked, and I fell on my left hand. A person at the corner saw it.';
+  page.sandbox.setAskAnswer('safe', 'Yes');
+  page.sandbox.setAskAnswer('missWork', 'No');
+  page.sandbox.setAskAnswer('backWork', 'Doctor has not said yet');
+  page.sandbox.setAskAnswer('doctorNote', 'No');
+  page.sandbox.setAskAnswer('helmet', 'Yes');
+  page.sandbox.setAskAnswer('when', '2026-07-01');
+  page.sandbox.setAskAnswer('vehicle', 'Scooter');
+  page.sandbox.setAskAnswer('role', 'I was riding');
+  page.sandbox.setAskAnswer('doctor', 'No');
+  page.sandbox.setAskAnswer('police', 'No');
+  page.sandbox.setAskAnswer('what', story);
+  page.sandbox.setAskAnswer('__urgent', 'No');
+  assert.equal(page.sandbox.openAskMail(), true);
+  const mail = parseMailto(page.mails[page.mails.length - 1]);
+  const facts = ['Student ID: 10001', 'Employer: Aramark', 'Program dates: June 1, 2026 to September 15, 2026', 'Will you miss work?: No'];
+  let at = -1;
+  facts.forEach(line => {
+    const i = mail.body.indexOf(line);
+    assert.ok(i > at, line);
+    at = i;
+  });
+  const storyAt = mail.body.indexOf(story);
+  assert.ok(storyAt > at);
+  assert.equal(mail.body.includes(story), true);
+  assert.match(mail.subject, /^Incident - Scooter Accident \| Summer 2026 \| 10001 \| Ada Lovelace$/);
+
+  function isoShift(n){
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function phase(startShift, endShift){
+    page.sandbox.setMe({
+      sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+      employer: 'Aramark', dsStart: isoShift(startShift), dsEnd: isoShift(endShift)
+    });
+    const go = { dataset: { go: 'home' }, closest(sel){ return sel === '[data-go]' ? go : null; } };
+    const listeners = (page.els.document.listeners && page.els.document.listeners.click) || [];
+    listeners.forEach(fn => fn({ target: { closest(sel){ return go.closest(sel); } } }));
+    const html = page.els.view.innerHTML;
+    const block = html.split('For you right now')[1] || '';
+    return block.split('</section>')[0];
+  }
+  const before = phase(5, 90);
+  assert.match(before, /You have not arrived yet/);
+  assert.match(before, /My visa appointment/);
+  assert.equal((before.match(/data-leaf=/g) || []).length, 6);
+  assert.match(phase(0, 80), /first 2 weeks/);
+  assert.match(phase(-5, 70), /first 2 weeks/);
+  assert.match(phase(-30, 40), /middle of your program/);
+  assert.match(phase(-40, 10), /last 3 weeks/);
+  assert.match(phase(-40, 2), /last 3 weeks/);
+  const after = phase(-80, -3);
+  assert.match(after, /program end date has passed/);
+  assert.match(after, /How do I claim my tax overages back/);
+  assert.equal((after.match(/data-leaf=/g) || []).length, 6);
+
+  const css = fs.readFileSync(path.join(ROOT, 'assets', 'styles.css'), 'utf8');
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(css, /--ink-3:#595959/);
+  assert.match(css, /Selected\. /);
+
+  const down = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('LOOKUP_SECRET_SHOULD_NOT_RENDER'); }
+  });
+  down.els.idq.value = '10001';
+  down.els.iddob.value = '2001-02-03';
+  await down.sandbox.doLookup();
+  const shown = visible(down.els);
+  assert.match(shown, /We could not look you up just now/);
+  assert.match(shown, /Try again/);
+  assert.equal(shown.includes('LOOKUP_SECRET_SHOULD_NOT_RENDER'), false);
+  down.sandbox.openQuestion('Can I travel inside or outside the United States');
+  const open = down.els.view.innerHTML;
+  assert.match(open, /Request a travel signature 2 weeks ahead/);
+  assert.equal(open.includes('Aramark'), false);
+  assert.match(open, /This answer is different for every person/);
 });

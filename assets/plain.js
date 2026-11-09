@@ -204,7 +204,7 @@ const PLAIN = {
 },
 'My casino fingerprinting': {
   lead:'CHI books casino fingerprinting. You do not book it.',
-  steps:['Your employer is told when it clears.','Off the schedule while you wait? Write down each free week.','Past two weeks? Use the email button and send that list.','A second casino needs its own fingerprinting.'],
+  steps:['Booking steps are on I need casino fingerprinting.','Off the schedule while you wait? Write down each free week.','Past two weeks? Use the email button and send that list.','A second casino needs its own fingerprinting.'],
   watch:'Lost the badge? Tell your employer the same day.'
 },
 'Can I change to a different employer': {
@@ -309,7 +309,7 @@ const PLAIN = {
 },
 'Can I travel before I go home': {
   lead:'A trip outside the U.S. must bring you back before your program end date.',
-  steps:['Entries M means more than one entry. S means one entry.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.','After your last work day, travel inside the U.S. only.'],
+  steps:['Use the other travel tile for the signature steps.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.','After your last work day, travel inside the U.S. only.'],
   watch:'Leave during the grace period and you cannot come back.'
 },
 'How do I extend my insurance for my travel period': {
