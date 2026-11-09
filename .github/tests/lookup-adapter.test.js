@@ -1234,3 +1234,37 @@ test('orientation schedule converts Peru, hides a past week, and falls back when
   assert.match(page.els.view.innerHTML, /10:00 AM New York time/);
   assert.equal(page.els.view.innerHTML.includes('in Mexico'), false);
 });
+
+test('the U.S. phone tile opens the Tally form and search finds it', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('the phone form must not look anyone up'); }
+  });
+  page.sandbox.setMe({ sid: '10001', first: 'Ada', last: 'Lovelace', employer: 'Aramark' });
+  page.sandbox.openQuestion('How do I get a US phone number');
+  const html = page.els.view.innerHTML;
+  assert.match(html, /Once you have a U\.S\. number, submit it here so CHI can reach you\./);
+  assert.match(html, /Update my U\.S\. phone number/);
+  assert.match(html, /href="https:\/\/tally\.so\/r\/GxQbZQ\?[^"]*sid=10001/);
+  assert.equal(html.includes('undefined'), false);
+
+  page.sandbox.setMe({ country: 'Peru' });
+  page.sandbox.openQuestion('How do I get a US phone number');
+  const bare = page.els.view.innerHTML;
+  assert.match(bare, /href="https:\/\/tally\.so\/r\/GxQbZQ"/);
+  assert.equal(bare.includes('sid='), false);
+  assert.equal(bare.includes('undefined'), false);
+
+  function search(word){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    assert.equal(page.els.view.innerHTML.includes('Nothing matches'), false, word);
+    assert.match(page.els.view.innerHTML, /How do I get a US phone number/);
+  }
+  search('american number');
+  search('whatsapp number');
+  search('us number');
+});
