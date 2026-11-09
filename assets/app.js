@@ -473,7 +473,7 @@ function nextStepItems(){
   }
   if(end && onOrAfterDay(today, shiftDay(end, -21)) && onOrBeforeDay(today, end)){
     items.push({ priority:7, due:end, q:'How do I get my final paycheck',
-      text:'Plan your last paycheck: contact your employer directly to arrange a check that arrives after you leave. Do not mail it to CHI. Keep your bank account open.' });
+      text:'Plan your last paycheck: contact your employer directly to arrange a check that arrives after you leave. Do not mail it to CHI. CHI will not deposit it. Keep your bank account open.' });
   }
   if(ssnState(ME.hasSSN) === 'no' && arrival && today.getTime() > shiftDay(arrival, 10).getTime()){
     const by = asText(ME.ssnBy);

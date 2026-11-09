@@ -557,7 +557,7 @@ test('My visa appointment uses Birth Country, the agency name, and the start dat
   assert.match(tile, /captures:'Nothing'/);
   assert.match(tile, /notify:'Nobody'/);
   assert.match(tile, /log:'Page view only'/);
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 72);
 
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -974,7 +974,7 @@ test('computed dates, missing fields, hasSSN, and search', async () => {
 
   page.sandbox.setMe({ sid: '10001', name: 'Ada', first: 'Ada', agency: 'ZZZZ', agencyName: 'ZZZZ' });
   const titles = [...fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8').matchAll(/\bq:'([^']+)'/g)].map(m => m[1]);
-  assert.equal(titles.length, 71);
+  assert.equal(titles.length, 72);
   titles.forEach(q => {
     page.sandbox.openQuestion(q);
     const html = page.els.view.innerHTML;
@@ -1005,7 +1005,7 @@ test('computed dates, missing fields, hasSSN, and search', async () => {
   page.els.s.value = 'workers comp';
   page.els.s.listeners.input.forEach(fn => fn());
   assert.match(page.els.view.innerHTML, /second job|accident|employer/i);
-  assert.equal(titles.length, 71);
+  assert.equal(titles.length, 72);
 });
 
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
@@ -1035,7 +1035,7 @@ test('training deck facts stay on the existing tiles', async () => {
     assert.match(window, /^1-800-432-4643, ext\. 0/);
     assert.match(window, /24\/7/);
   });
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 72);
 
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -1115,7 +1115,7 @@ test('training deck facts stay on the existing tiles', async () => {
 
 test('email guidance stays on the existing tiles', async () => {
   const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 72);
   assert.equal(src.includes('MyProfile'), false);
   assert.equal(src.includes('docs.google.com'), false);
   assert.equal(/ask your agency|contact your agency|message your agency/i.test(src), false);
@@ -1260,7 +1260,7 @@ test('participant-facing tile text does not say agency', () => {
     });
   });
   assert.deepEqual(hits, []);
-  assert.equal((src.match(/\n\{s:'/g) || []).length, 71);
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 72);
 });
 
 test('My next steps shows, hides, and skips missing fields', async () => {
@@ -1337,4 +1337,8 @@ test('My next steps shows, hides, and skips missing fields', async () => {
   search('find housing', /Help me find housing/);
   search('change department', /Can I change my position or department/);
   search('forgot evaluation', /My monthly evaluation/);
+  search('who do I ask', /Who do I contact for help/);
+  search('weed', /I feel unsafe or I am being harassed/);
+  search('babysitter', /How do I get a second job approved/);
+  search('15 days', /I want to go home early/);
 });
