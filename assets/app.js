@@ -517,6 +517,179 @@ function visaYouHtml(me){
   return '';
 }
 
+/* One zone per country. A country with more than one zone, or a country
+   that is not listed, stays on New York time only. Match the whole name. */
+const COUNTRY_ZONE = {
+  peru:'America/Lima', colombia:'America/Bogota', ecuador:'America/Guayaquil',
+  bolivia:'America/La_Paz', venezuela:'America/Caracas', paraguay:'America/Asuncion',
+  uruguay:'America/Montevideo', argentina:'America/Argentina/Buenos_Aires',
+  'costa rica':'America/Costa_Rica', panama:'America/Panama', nicaragua:'America/Managua',
+  honduras:'America/Tegucigalpa', 'el salvador':'America/El_Salvador', guatemala:'America/Guatemala',
+  jamaica:'America/Jamaica', 'dominican republic':'America/Santo_Domingo',
+  'trinidad and tobago':'America/Port_of_Spain', barbados:'America/Barbados',
+  romania:'Europe/Bucharest', bulgaria:'Europe/Sofia', poland:'Europe/Warsaw',
+  hungary:'Europe/Budapest', 'czech republic':'Europe/Prague', czechia:'Europe/Prague',
+  slovakia:'Europe/Bratislava', serbia:'Europe/Belgrade', croatia:'Europe/Zagreb',
+  slovenia:'Europe/Ljubljana', 'bosnia and herzegovina':'Europe/Sarajevo',
+  montenegro:'Europe/Podgorica', 'north macedonia':'Europe/Skopje', macedonia:'Europe/Skopje',
+  albania:'Europe/Tirane', moldova:'Europe/Chisinau', ukraine:'Europe/Kyiv',
+  turkey:'Europe/Istanbul', turkiye:'Europe/Istanbul', georgia:'Asia/Tbilisi',
+  armenia:'Asia/Yerevan', lithuania:'Europe/Vilnius', latvia:'Europe/Riga',
+  estonia:'Europe/Tallinn', germany:'Europe/Berlin', austria:'Europe/Vienna',
+  netherlands:'Europe/Amsterdam', belgium:'Europe/Brussels', italy:'Europe/Rome',
+  greece:'Europe/Athens', sweden:'Europe/Stockholm', norway:'Europe/Oslo',
+  finland:'Europe/Helsinki', denmark:'Europe/Copenhagen', ireland:'Europe/Dublin',
+  'united kingdom':'Europe/London', uk:'Europe/London', 'great britain':'Europe/London',
+  england:'Europe/London', scotland:'Europe/London', wales:'Europe/London',
+  thailand:'Asia/Bangkok', philippines:'Asia/Manila', vietnam:'Asia/Ho_Chi_Minh',
+  'south korea':'Asia/Seoul', korea:'Asia/Seoul', 'republic of korea':'Asia/Seoul',
+  japan:'Asia/Tokyo', china:'Asia/Shanghai', taiwan:'Asia/Taipei', india:'Asia/Kolkata',
+  nepal:'Asia/Kathmandu', 'south africa':'Africa/Johannesburg', kenya:'Africa/Nairobi',
+  ghana:'Africa/Accra', nigeria:'Africa/Lagos', tunisia:'Africa/Tunis',
+  morocco:'Africa/Casablanca', egypt:'Africa/Cairo', israel:'Asia/Jerusalem',
+  jordan:'Asia/Amman', singapore:'Asia/Singapore', 'new zealand':'Pacific/Auckland'
+};
+const COUNTRY_MULTI = {
+  'united states':1, usa:1, us:1, 'united states of america':1, america:1,
+  canada:1, mexico:1, brazil:1, russia:1, australia:1, indonesia:1,
+  kazakhstan:1, spain:1, portugal:1, chile:1, france:1
+};
+function countryLookupKey(name){
+  return String(name || '').trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
+}
+function countryZone(country){
+  const key = countryLookupKey(country);
+  if(!key || COUNTRY_MULTI[key]) return '';
+  return COUNTRY_ZONE[key] || '';
+}
+function plainClock(date, timeZone){
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZone, hour: 'numeric', minute: '2-digit', hour12: true
+  }).format(date).replace(/\u202f|\u00a0/g, ' ');
+}
+function plainWeekday(date, timeZone){
+  return new Intl.DateTimeFormat('en-US', { timeZone: timeZone, weekday: 'long' }).format(date);
+}
+function plainMonthDay(dateStr){
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const mo = Number(String(dateStr).slice(5, 7));
+  const day = Number(String(dateStr).slice(8, 10));
+  const year = String(dateStr).slice(0, 4);
+  if(!months[mo - 1] || !day) return '';
+  return months[mo - 1] + ' ' + day + ', ' + year;
+}
+function zonedWallTime(dateStr, hour, minute, timeZone){
+  const y = Number(String(dateStr).slice(0, 4));
+  const mo = Number(String(dateStr).slice(5, 7));
+  const d = Number(String(dateStr).slice(8, 10));
+  const wall = Date.UTC(y, mo - 1, d, hour, minute, 0);
+  let utc = wall;
+  for(let i = 0; i < 2; i++){
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).formatToParts(new Date(utc));
+    const bag = {};
+    parts.forEach(p => { bag[p.type] = p.value; });
+    let h = Number(bag.hour);
+    if(h === 24) h = 0;
+    const asUTC = Date.UTC(Number(bag.year), Number(bag.month) - 1, Number(bag.day), h, Number(bag.minute), Number(bag.second));
+    utc = wall - (asUTC - utc);
+  }
+  return new Date(utc);
+}
+function weekStartParts(week){
+  const raw = String(week && week.start || '10:00');
+  const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+  const hour = match ? Number(match[1]) : 10;
+  const minute = match ? Number(match[2]) : 0;
+  let zone = String(week && week.zone || 'America/New_York');
+  try{ new Intl.DateTimeFormat('en-US', { timeZone: zone }).format(0); }
+  catch(e){ zone = 'America/New_York'; }
+  return { hour: hour, minute: minute, zone: zone };
+}
+let orientationNow = null;
+let orientationWeeksOverride = null;
+function setOrientationNow(value){
+  orientationNow = value ? new Date(value) : null;
+}
+function setOrientationWeeks(list){
+  orientationWeeksOverride = list;
+}
+function orientationClock(){
+  return orientationNow ? new Date(orientationNow.getTime()) : new Date();
+}
+function orientationWeekList(){
+  if(orientationWeeksOverride) return orientationWeeksOverride;
+  if(typeof ORIENTATION_WEEKS !== 'undefined' && Array.isArray(ORIENTATION_WEEKS)) return ORIENTATION_WEEKS;
+  return [];
+}
+function weekStillOpen(week, now){
+  const sessions = week && Array.isArray(week.sessions) ? week.sessions : [];
+  const last = sessions.length ? sessions[sessions.length - 1] : null;
+  if(!last || !/^\d{4}-\d{2}-\d{2}$/.test(String(last.date || ''))) return false;
+  const start = weekStartParts(week);
+  const when = zonedWallTime(last.date, start.hour, start.minute, start.zone);
+  return now.getTime() < when.getTime();
+}
+function orientationAttendedYes(){
+  const v = String(fieldValue('orientationAttended')).toLowerCase();
+  return v === 'yes' || v === 'y';
+}
+function orientationScheduleHtml(){
+  const now = orientationClock();
+  const localZone = countryZone(fieldValue('country'));
+  const localName = fieldValue('country');
+  const weeks = orientationWeekList().filter(week => weekStillOpen(week, now));
+  let html = '';
+  if(orientationAttendedYes()){
+    html += '<p>Our records show you\'ve attended orientation.</p>';
+  }
+  if(!weeks.length){
+    html += '<p>The next orientation dates will be posted here. Watch your email for your invitation.</p>';
+    return html;
+  }
+  weeks.forEach(week => {
+    const sessions = Array.isArray(week.sessions) ? week.sessions : [];
+    const start = weekStartParts(week);
+    const first = sessions[0] && sessions[0].date;
+    const last = sessions[sessions.length - 1] && sessions[sessions.length - 1].date;
+    const firstLabel = plainMonthDay(first);
+    const lastLabel = plainMonthDay(last);
+    let range = '';
+    if(firstLabel && lastLabel){
+      const sameMonth = firstLabel.slice(0, firstLabel.indexOf(' ')) === lastLabel.slice(0, lastLabel.indexOf(' '));
+      const sameYear = String(first).slice(0, 4) === String(last).slice(0, 4);
+      if(sameMonth && sameYear){
+        range = firstLabel.replace(/, \d{4}$/, '') + ' to ' + String(Number(String(last).slice(8, 10))) + ', ' + String(first).slice(0, 4);
+      } else if(sameYear){
+        range = firstLabel.replace(/, \d{4}$/, '') + ' to ' + lastLabel;
+      } else {
+        range = firstLabel + ' to ' + lastLabel;
+      }
+    }
+    html += '<p><b>' + esc(week.week || 'Orientation') + '</b>' + (range ? ': ' + esc(range) + '.' : '.') + ' Every session starts at ' + esc(plainClock(zonedWallTime(first, start.hour, start.minute, start.zone), start.zone)) + ' New York time.</p>';
+    if(week.note) html += '<p>' + esc(week.note) + '</p>';
+    sessions.forEach(session => {
+      if(!session || !/^\d{4}-\d{2}-\d{2}$/.test(String(session.date || ''))) return;
+      const when = zonedWallTime(session.date, start.hour, start.minute, start.zone);
+      const day = plainWeekday(when, start.zone) + ', ' + plainMonthDay(session.date);
+      let line = esc(session.name || 'Session') + ', ' + esc(day) + ': ' + esc(session.title || '') + '. ';
+      line += esc(plainClock(when, start.zone)) + ' New York time.';
+      if(localZone){
+        line += ' ' + esc(plainClock(when, localZone)) + ' in ' + esc(localName) + '.';
+      }
+      html += '<p>' + line + '</p>';
+    });
+    const link = String(week.register || '');
+    if(/^https:\/\//.test(link)){
+      html += '<p><a href="' + esc(link) + '" target="_blank" rel="noopener">Register</a></p>';
+    }
+  });
+  return html;
+}
+
 function leafBody(t){
   return t.body.map(p => {
     if(t.q === 'My visa appointment' && String(p).indexOf('Is your appointment after your start date') === 0){
@@ -580,6 +753,7 @@ function renderLeaf(){
       <div class="leaf-b">
         <p class="lead">${fillSmart(t.lead)}</p>
         ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
+        ${t.q === 'When is the next online orientation' ? orientationScheduleHtml() : ''}
         ${leafBody(t)}
         ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${fillSmart(t.clock.t)}</div>` : ''}
         ${t.hz ? `<div class="note" style="background:var(--ground);border-left-color:var(--s${STAGES.find(x=>x.key===t.s).n})">Housing has tiles at every point in your programme. Search the word housing and they all come up.</div>` : ''}

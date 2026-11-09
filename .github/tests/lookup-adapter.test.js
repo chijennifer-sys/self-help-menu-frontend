@@ -96,6 +96,7 @@ async function loadPage({ endpoint, href, handler }) {
     fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8'),
     config,
     fs.readFileSync(path.join(ROOT, 'assets', 'office-holidays.js'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'assets', 'orientation.js'), 'utf8'),
     fs.readFileSync(path.join(ROOT, 'assets', 'app.js'), 'utf8')
   ].join('\n');
   const sandbox = {
@@ -1182,4 +1183,54 @@ test('email guidance stays on the existing tiles', async () => {
   search('plattsburgh');
   search('valet');
   search('esta');
+});
+
+test('orientation schedule converts Peru, hides a past week, and falls back when empty', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('the orientation tile must not look anyone up'); }
+  });
+  const link = 'https://us02web.zoom.us/webinar/register/WN_e5OfXP9_T-W9HwNsS-RbyQ';
+  page.sandbox.setOrientationNow('2026-11-09T15:00:00Z');
+  page.sandbox.setMe({ sid: '10001', first: 'Ada', country: 'Peru', orientationAttended: 'Yes' });
+  page.sandbox.openQuestion('When is the next online orientation');
+  const peru = page.els.view.innerHTML;
+  assert.match(peru, /10:00 AM in Peru/);
+  assert.match(peru, /10:00 AM New York time/);
+  assert.equal(peru.includes('9:00 AM'), false);
+  assert.match(peru, /Before You Fly/);
+  assert.match(peru, /Arrival &amp; Getting to Work|Arrival & Getting to Work/);
+  assert.match(peru, /Living the Program/);
+  assert.match(peru, /Our records show you've attended orientation/);
+  assert.equal(peru.includes(link), true);
+  assert.match(peru, /changed clocks back on November 1/);
+
+  page.sandbox.setOfficeNow('2026-11-11T15:00:00Z');
+  page.sandbox.setOrientationNow('2026-11-11T15:00:00Z');
+  page.sandbox.openQuestion('When is the next online orientation');
+  assert.match(page.els.view.innerHTML, /Arrival/);
+  assert.equal(page.els.view.innerHTML.includes(link), true);
+
+  page.sandbox.setOrientationNow('2026-11-12T15:00:00Z');
+  page.sandbox.openQuestion('When is the next online orientation');
+  const past = page.els.view.innerHTML;
+  assert.match(past, /The next orientation dates will be posted here\. Watch your email for your invitation\./);
+  assert.equal(past.includes('Before You Fly'), false);
+  assert.equal(past.includes(link), false);
+  assert.match(past, /Our records show you've attended orientation/);
+
+  page.sandbox.setOrientationNow('2026-11-09T15:00:00Z');
+  page.sandbox.setOrientationWeeks([]);
+  page.sandbox.openQuestion('When is the next online orientation');
+  const empty = page.els.view.innerHTML;
+  assert.match(empty, /The next orientation dates will be posted here\. Watch your email for your invitation\./);
+  assert.equal(empty.includes(link), false);
+  assert.equal(empty.includes('Before You Fly'), false);
+
+  page.sandbox.setOrientationWeeks(null);
+  page.sandbox.setMe({ sid: '10001', country: 'Mexico' });
+  page.sandbox.openQuestion('When is the next online orientation');
+  assert.match(page.els.view.innerHTML, /10:00 AM New York time/);
+  assert.equal(page.els.view.innerHTML.includes('in Mexico'), false);
 });

@@ -11,7 +11,7 @@ const STAGES = [
 ];
 
 const T = [
-{s:'home', q:'When is the next online orientation', sub:'Sessions, attendance, the certificate', g:'Before you book anything', ic:'webinar', r:'Answer', k:'orientation session webinar zoom next when schedule missed attendance certificate mandatory link slides recording gba absent marked student',
+{s:'home', q:'When is the next online orientation', sub:'Sessions, attendance, the certificate', g:'Before you book anything', ic:'webinar', r:'Answer', k:'orientation session webinar zoom next when schedule missed attendance certificate mandatory link slides recording gba absent marked student training register',
  you:"You start <b>{dsStartF}</b>.[[ Orientation attended: <b>{orientationAttended}</b>.]]",
  lead:"Join a session before your start. Cannot join? Tell your CHI team before the session, not after.",
  body:["The dates come by email and by WhatsApp.","Your Zoom name is your full name and your Student ID <b>{sid}</b>.","Fill in the attendance form during the session.","Marked absent, but you were there? Message my CHI team with the date and the Zoom name you used."],
