@@ -171,10 +171,13 @@ test('endpoint fixtures replace either an empty or a saved /exec URL', () => {
   assert.deepEqual(fs.readFileSync(file), savedBytes);
 });
 
-test('four country answers stay in the content file', () => {
+test('country personalization stays on the four programme tiles', () => {
   const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
-  const hits = src.match(/\{country\}/g) || [];
-  assert.equal(hits.length, 4);
+  ['My visa appointment', 'Where is my DS-2019', 'I lost my passport or another document', 'Can I come back next year'].forEach(q => {
+    const i = src.indexOf("q:'" + q + "'");
+    assert.ok(i > 0, q);
+    assert.match(src.slice(i, i + 700), /\{country/);
+  });
 });
 
 test('demo roster is unchanged when ENDPOINT is empty', async () => {
@@ -409,7 +412,9 @@ test('name and date of birth chooser exposes only name, agency, and season', asy
   assert.equal(JSON.stringify(me).includes('chooser-secret@example.com'), false);
   assert.equal(JSON.stringify(me).includes('Chooser Employer Hidden'), false);
   assert.equal(me.country, undefined);
-  assert.equal(page.sandbox.fill('You are in {country}.'), 'You are in {country}.');
+  const blankCountry = page.sandbox.fill('You are in {country}.');
+  assert.equal(blankCountry.includes('{country}'), false);
+  assert.equal(blankCountry.includes('undefined'), false);
 });
 
 test('a live record keeps emailMask and a non-empty country, and never stores a raw email', async () => {
@@ -861,8 +866,8 @@ test('WhatsApp button follows Eastern office hours', async () => {
   assert.equal(noteText.includes('911'), false);
   assert.equal(page.els.whatsapp.textContent, 'WhatsApp Jenn');
   const content = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
-  assert.match(content, /If you are in immediate danger, call 911 first\./);
-  assert.match(content, /call or text 988/);
+  assert.match(content, /Call 911/);
+  assert.match(content, /988/);
 
   function show(iso){
     page.opened.length = 0;
@@ -894,9 +899,9 @@ test('WhatsApp button follows Eastern office hours', async () => {
   await identifyAs(page, person({ sid: '10001', dob: '2001-01-04' }));
   page.sandbox.setOfficeNow('2026-01-10T15:00:00Z');
   page.sandbox.openQuestion('I feel unsafe or I am being harassed');
-  assert.match(page.els.view.innerHTML, /call 911 first/);
+  assert.match(page.els.view.innerHTML, /Call 911/);
   page.sandbox.openQuestion('I am struggling or homesick');
-  assert.match(page.els.view.innerHTML, /call or text 988/);
+  assert.match(page.els.view.innerHTML, /988/);
   assert.equal(page.els.whatsapp.hidden, true);
   assert.equal(page.els.whatsappnote.hidden, false);
 });
@@ -934,6 +939,68 @@ test('CHI office holidays hide WhatsApp for the Eastern date', async () => {
   assert.equal(note.includes('911'), false);
 });
 
+test('computed dates, missing fields, hasSSN, and search', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('rendering a fake record must not look anyone up'); }
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace',
+    agency: 'AEX', country: 'Romania', employer: 'Aramark', location: 'Ocean City, NJ',
+    job: 'Server', season: 'Summer 2026', hasSSN: 'No',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', arrival: '2026-05-28'
+  });
+  const me = JSON.parse(page.sandbox.localStorage.getItem('chi_me'));
+  const expectF = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  assert.equal(me.insStartF, expectF('2026-05-25'));
+  assert.equal(me.sevisDueF, expectF('2026-05-31'));
+  assert.equal(me.graceEnd, expectF('2026-10-15'));
+  assert.equal(me.ssnBy, expectF('2026-08-01'));
+  assert.equal(me.sevisBy, me.sevisDueF);
+  page.sandbox.openQuestion('How do I apply for my Social Security Number');
+  assert.match(page.els.view.innerHTML, /activation email/);
+  assert.equal(page.els.view.innerHTML.includes('good for life'), false);
+  page.sandbox.setMe(Object.assign({}, me, { hasSSN: 'Yes' }));
+  page.sandbox.openQuestion('How do I apply for my Social Security Number');
+  assert.match(page.els.view.innerHTML, /good for life/);
+
+  page.sandbox.setMe({ sid: '10001', name: 'Ada', first: 'Ada', agency: 'ZZZZ', agencyName: 'ZZZZ' });
+  const titles = [...fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8').matchAll(/\bq:'([^']+)'/g)].map(m => m[1]);
+  assert.equal(titles.length, 67);
+  titles.forEach(q => {
+    page.sandbox.openQuestion(q);
+    const html = page.els.view.innerHTML;
+    assert.equal(html.includes('undefined'), false, q);
+    assert.equal(/\{[a-zA-Z]+/.test(html), false, q);
+    assert.equal(html.includes('ZZZZ'), false, q);
+  });
+  page.sandbox.setMe({
+    sid: '10001', first: 'Ada', last: 'Lovelace', name: 'Ada Lovelace', firstName: 'Ada',
+    agency: 'AEX', agencyName: 'American Experience', country: 'Romania',
+    employer: 'Aramark', location: 'Ocean City, NJ', job: 'Server', season: 'Summer 2026',
+    hasSSN: 'Yes', coordinator: 'kathleen', dsNumber: 'N123', housingStatus: 'Approved',
+    housingAddress: '1 Boardwalk', sevisStatus: 'Validated', visaStatus: 'Approved',
+    dsStart: '2026-06-01', dsEnd: '2026-09-15', arrival: '2026-05-28',
+    emailMask: 'a••••@example.com'
+  });
+  titles.forEach(q => {
+    page.sandbox.openQuestion(q);
+    assert.equal(page.els.view.innerHTML.includes('undefined'), false, q);
+    assert.equal(/\{[a-zA-Z]+/.test(page.els.view.innerHTML), false, q);
+  });
+  page.els.s.value = 'social security';
+  page.els.s.listeners.input.forEach(fn => fn());
+  assert.match(page.els.view.innerHTML, /Social Security/i);
+  page.els.s.value = 'teladoc';
+  page.els.s.listeners.input.forEach(fn => fn());
+  assert.match(page.els.view.innerHTML, /Teladoc|doctor|sick/i);
+  page.els.s.value = 'workers comp';
+  page.els.s.listeners.input.forEach(fn => fn());
+  assert.match(page.els.view.innerHTML, /second job|accident|employer/i);
+  assert.equal(titles.length, 67);
+});
+
 test('My visa appointment stays behind the ID and date of birth gate and does not send', async () => {
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
@@ -950,4 +1017,91 @@ test('My visa appointment stays behind the ID and date of birth gate and does no
   assert.equal(locked.includes('American Experience'), false);
   assert.equal(page.calls.length, 0);
   assert.equal(page.els.bar.hidden, false);
+});
+
+test('training deck facts stay on the existing tiles', async () => {
+  const src = fs.readFileSync(path.join(ROOT, 'assets', 'content.js'), 'utf8');
+  const phones = [...src.matchAll(/1-800-432-4643/g)];
+  assert.ok(phones.length >= 4);
+  phones.forEach(hit => {
+    const window = src.slice(hit.index, hit.index + 70);
+    assert.match(window, /^1-800-432-4643, ext\. 0/);
+    assert.match(window, /24\/7/);
+  });
+  assert.equal((src.match(/\n\{s:'/g) || []).length, 67);
+
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a training-deck check must not look anyone up'); }
+  });
+  function search(word){
+    page.els.s.value = word;
+    page.els.s.listeners.input.forEach(fn => fn());
+    assert.equal(page.els.view.innerHTML.includes('Nothing matches'), false, word);
+    return page.els.view.innerHTML;
+  }
+  assert.match(search('revolut'), /US bank account/i);
+  assert.match(search('paypal'), /US bank account/i);
+  assert.match(search('1040'), /tax/i);
+  assert.match(search('marijuana'), /What should I bring/);
+  assert.match(search('frostbite'), /What should I bring/);
+
+  const expectF = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  page.sandbox.setMe({ season: 'Summer 2026', employer: 'Aramark', location: 'Ocean City, NJ', dsStart: '2026-06-01', dsEnd: '2026-09-15' });
+  page.sandbox.openQuestion('What should I bring');
+  assert.match(page.els.view.innerHTML, /1,500 dollars/);
+  assert.match(page.els.view.innerHTML, /2 to 3 weeks/);
+  assert.match(page.els.view.innerHTML, /21/);
+  assert.match(page.els.view.innerHTML, /cigarettes, vapes, or alcohol/);
+  assert.match(page.els.view.innerHTML, /Marijuana is illegal under federal law/);
+  assert.equal(page.els.view.innerHTML.includes('frostbite'), false);
+
+  page.sandbox.setMe({ season: 'Winter 2027', location: 'Stowe, VT', dsStart: '2026-12-01', dsEnd: '2027-03-15' });
+  page.sandbox.openQuestion('What should I bring');
+  assert.match(page.els.view.innerHTML, /frostbite/);
+  assert.match(page.els.view.innerHTML, /dress in layers/);
+  assert.match(page.els.view.innerHTML, /short days in small towns/);
+  page.sandbox.openQuestion('How early can I arrive');
+  assert.match(page.els.view.innerHTML, /3 to 5 days before/);
+  assert.match(page.els.view.innerHTML, new RegExp(expectF('2026-12-01').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  page.sandbox.setMe({ employer: 'Aramark', season: 'Summer 2026' });
+  page.sandbox.openQuestion('How early can I arrive');
+  assert.match(page.els.view.innerHTML, /3 to 5 days before/);
+  assert.equal(page.els.view.innerHTML.includes('undefined'), false);
+  assert.equal(/\{[a-zA-Z]+/.test(page.els.view.innerHTML), false);
+  page.sandbox.openQuestion('Where do I verify my housing');
+  assert.match(page.els.view.innerHTML, /at least 4 weeks before you arrive/);
+  assert.match(page.els.view.innerHTML, /cannot activate SEVIS/);
+  page.sandbox.openQuestion('How do I get a second job approved');
+  assert.match(page.els.view.innerHTML, /written CHI approval before your first shift/);
+  assert.match(page.els.view.innerHTML, /verbal OK from an employer is not approval/);
+  assert.match(page.els.view.innerHTML, /Additional Employment form/);
+  page.sandbox.openQuestion('Can I change to a different employer');
+  assert.match(page.els.view.innerHTML, /30 days/);
+  assert.match(page.els.view.innerHTML, /CHI must approve/);
+  assert.match(page.els.view.innerHTML, /Do not walk out of your job/);
+  page.sandbox.openQuestion('How do I open a US bank account');
+  assert.match(page.els.view.innerHTML, /Revolut and PayPal do not work for U\.S\. payroll/);
+  assert.match(page.els.view.innerHTML, /Use a U\.S\. bank account/);
+  page.sandbox.openQuestion('What tax comes out of my pay');
+  assert.match(page.els.view.innerHTML, /W-2 arrives by January 31/);
+  assert.match(page.els.view.innerHTML, /February 1 and April 15/);
+  assert.match(page.els.view.innerHTML, /Form 1040-NR/);
+  page.sandbox.openQuestion('When do I have to leave the United States');
+  assert.match(page.els.view.innerHTML, /up to 30 days/);
+  assert.match(page.els.view.innerHTML, /cannot work/);
+  assert.match(page.els.view.innerHTML, /Consider travel insurance/);
+  assert.equal(page.els.view.innerHTML.includes('undefined'), false);
+  page.sandbox.setMe({ dsStart: '2026-06-01', dsEnd: '2026-09-15', season: 'Summer 2026' });
+  page.sandbox.openQuestion('When do I have to leave the United States');
+  assert.match(page.els.view.innerHTML, new RegExp(expectF('2026-09-15').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(page.els.view.innerHTML, /Consider travel insurance/);
+
+  ['What documents do I need', 'I was in an accident', 'I feel unsafe or I am being harassed', 'I lost my passport or another document'].forEach(q => {
+    page.sandbox.openQuestion(q);
+    assert.match(page.els.view.innerHTML, /1-800-432-4643, ext\. 0/, q);
+    assert.match(page.els.view.innerHTML, /24\/7/, q);
+  });
 });

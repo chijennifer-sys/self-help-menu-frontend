@@ -66,11 +66,20 @@ function enrich(p){
   m.day = day; m.len = len;
   m.daysLeft = en ? days(en, TODAY) : null;
   m.ssnBy = en ? FMT(addDays(en, -45)) : '';
-  m.sevisBy = st ? FMT(addDays(st, 30)) : '';
+  m.insStartF = st ? FMT(addDays(st, -7)) : '';
+  m.sevisDueF = ar ? FMT(addDays(ar, 3)) : '';
+  m.sevisBy = m.sevisDueF;
   m.graceEnd = en ? FMT(addDays(en, 30)) : '';
   m.proofCutoff = en ? FMT(addDays(en, -16)) : '';
-  m.earlyOk = st ? FMT(addDays(st, -7)) : '';
+  m.earlyOk = m.insStartF;
   m.dsStartF = FMT(st); m.dsEndF = FMT(en); m.arrivalF = FMT(ar);
+  m.firstName = asText(p.firstName || p.first);
+  m.winterNote = /\bwinter\b/i.test(asText(p.season))
+    ? 'This is a winter season. Watch for frostbite, dress in layers, and expect short days in small towns.'
+    : '';
+  ['sevisValidationDate','embassyInterview','dateVisaReceived','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd'].forEach(k => {
+    if(m[k] && /^\d{4}-\d{2}-\d{2}/.test(String(m[k]))) m[k] = FMT(D(String(m[k]).slice(0,10)));
+  });
   m.insGap = (st && ar) ? days(st, ar) : null;
   m.poc = (POC[p.agency] || []).join(' and ');
   m.agencyCode = p.agency;
@@ -160,7 +169,7 @@ function looksLikePerson(o){
 function adaptFull(raw){
   if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
-  ['sid','tok','dob','last','first','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred'].forEach(k => {
+  ['sid','tok','dob','last','first','firstName','agency','agencyName','employer','location','job','dsStart','dsEnd','arrival','hasSSN','season','preferred','dsNumber','whatsapp','housingStatus','housingAddress','sevisValidationDate','sevisStatus','secondJobHost','monthlyEvalStatus','returnee','timesParticipated','orientationAttended','visaStatus','visaApproved','dateVisaReceived','embassyInterview','placementStart','placementEnd','hostCityArrival','earlyStart','lateStart','earlyEnd','lateEnd','employerDba','positionId','rm','paused','arrivalAirport','arrivalAirline','arrivalFlight','ssaOfficeName','ssaOfficeAddress','ssaOfficePhone','ssaZip','waGroupName','waGroupLink','managerName','employerCity','employerPhone'].forEach(k => {
     const v = asText(raw[k]);
     if(v) out[k] = v;
   });
@@ -302,9 +311,71 @@ async function lookupName(full, dob){
   return dataToNameList(data);
 }
 
+function fieldValue(k){
+  if(!ME) return '';
+  if(k==='firstName') return asText(ME.firstName || ME.first);
+  if(k==='name') return asText(ME.name) || [asText(ME.first), asText(ME.last)].filter(Boolean).join(' ');
+  let v = ME[k];
+  if(v===undefined || v===null) return '';
+  v = String(v).trim();
+  if(!v || v==='undefined' || v==='null') return '';
+  if(k==='agency' || k==='agencyCode' || k==='agencyOfficeCode') return '';
+  if(k==='agencyName'){
+    if(AGENCY_NAME[v]) return AGENCY_NAME[v];
+    if(typeof looksLikeAgencyCode==='function' && looksLikeAgencyCode(v)) return '';
+    return v;
+  }
+  if(k==='coordinator'){
+    const key = typeof coordinatorKey==='function' ? coordinatorKey(v) : '';
+    if(key && typeof CHI_TEAM!=='undefined' && CHI_TEAM[key]) return CHI_TEAM[key].short;
+    if(typeof looksLikeAgencyCode==='function' && looksLikeAgencyCode(v)) return '';
+    return v;
+  }
+  return v;
+}
 function fill(str){
-  if(!ME || !str) return str;
-  return str.replace(/\{(\w+)\}/g, (m,k) => (ME[k] !== undefined && ME[k] !== null && ME[k] !== '') ? ME[k] : m);
+  if(!str) return str;
+  return String(str).replace(/\[\[([\s\S]*?)\]\]/g, (m, inner) => {
+    const keys = [];
+    inner.replace(/\{(\w+)/g, (mm, k) => { keys.push(k); return mm; });
+    if(keys.length && keys.some(k => !fieldValue(k))) return '';
+    return inner;
+  }).replace(/\{(\w+)(?:\|([^}]*))?\}/g, (m, k, fb) => {
+    const v = fieldValue(k);
+    if(v) return v;
+    if(fb && fb!=='omit') return fb;
+    return '';
+  });
+}
+function fillSmart(str){
+  if(!str) return '';
+  let drop = false;
+  let s = String(str).replace(/\[\[([\s\S]*?)\]\]/g, (m, inner) => {
+    const keys = [];
+    inner.replace(/\{(\w+)/g, (mm, k) => { keys.push(k); return mm; });
+    if(keys.length && keys.some(k => !fieldValue(k))) return '';
+    return inner;
+  }).replace(/\{(\w+)(?:\|([^}]*))?\}/g, (m, k, fb) => {
+    const v = fieldValue(k);
+    if(v) return esc(v);
+    if(fb==='omit'){ drop = true; return ''; }
+    if(fb) return esc(fb);
+    return '';
+  });
+  if(drop) return '';
+  s = s.replace(/<b>\s*<\/b>/g,'').replace(/[ \t]{2,}/g,' ').replace(/\s+([.,;:])/g,'$1').replace(/\(\s*\)/g,'').trim();
+  if(!s.replace(/<[^>]+>/g,'').replace(/[\s.,;:|/—\-]+/g,'')) return '';
+  return s;
+}
+function tileYou(t){
+  if(!t) return '';
+  if(t.q==='My visa appointment') return visaYouHtml(ME);
+  let raw = t.you || '';
+  if(t.youYes || t.youNo){
+    const hs = String(fieldValue('hasSSN')).toLowerCase();
+    raw = (hs==='yes' || hs==='y') ? (t.youYes||'') : (t.youNo||t.you||'');
+  }
+  return fillSmart(raw);
 }
 
 let state = {stage:null, leaf:null, q:''};
@@ -443,7 +514,9 @@ function leafBody(t){
         : esc(p);
       return '<p>' + sentence + '</p>';
     }
-    return '<p>' + esc(fill(p)) + '</p>';
+    const text = fillSmart(p);
+    if(!text) return '';
+    return '<p>' + text + '</p>';
   }).join('');
 }
 
@@ -477,11 +550,14 @@ function renderLeaf(){
   }
   let url = t.act.url ? `https://${t.act.url}` : null;
   if(url && ME){
-    url += `?sid=${encodeURIComponent(ME.sid)}&first=${encodeURIComponent(ME.first)}&last=${encodeURIComponent(ME.last)}&employer=${encodeURIComponent(ME.employer)}`;
+    const q = [];
+    ['sid','first','last','employer'].forEach(k => {
+      const v = asText(ME[k]);
+      if(v && v !== 'undefined') q.push(k + '=' + encodeURIComponent(v));
+    });
+    if(q.length) url += '?' + q.join('&');
   }
-  const youHtml = t.q === 'My visa appointment'
-    ? visaYouHtml(ME)
-    : (t.you && ME && !/\{\w+\}/.test(fill(t.you)) ? fill(t.you) : '');
+  const youHtml = tileYou(t);
   view.innerHTML = `
     <div class="crumb"><button data-go="${state.q?'search':'stage'}" data-stage="${t.s}">${back} ${esc(state.q?'Results':s.t)}</button></div>
     <article class="leaf">
@@ -490,16 +566,16 @@ function renderLeaf(){
         <div class="leaf-meta"><span class="pill ${t.r}">${t.r}</span><span style="font-size:12.5px;color:var(--ink-3)">${esc(ROUTE_D[t.r])}</span></div>
       </div>
       <div class="leaf-b">
-        <p class="lead">${esc(fill(t.lead))}</p>
+        <p class="lead">${fillSmart(t.lead)}</p>
         ${youHtml ? `<div class="you"><span class="yl">Your programme</span>${youHtml}</div>` : ''}
         ${leafBody(t)}
-        ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${esc(fill(t.clock.t))}</div>` : ''}
+        ${t.clock ? `<div class="note clock"><span class="clock-l">${esc(t.clock.l)}</span>${fillSmart(t.clock.t)}</div>` : ''}
         ${t.hz ? `<div class="note" style="background:var(--ground);border-left-color:var(--s${STAGES.find(x=>x.key===t.s).n})">Housing has tiles at every point in your programme. Search the word housing and they all come up.</div>` : ''}
         ${t.sample ? `<div class="sample">
           <div class="sample-h"><span class="sample-l">${esc(t.sample.title)}</span><button class="copy" data-copy="${T.indexOf(t)}">Copy</button></div>
-          <div class="sample-t">${t.sample.lines.map(l=>esc(fill(l))||'&nbsp;').join('<br>')}</div>
+          <div class="sample-t">${t.sample.lines.map(l=>fillSmart(l)||'&nbsp;').join('<br>')}</div>
         </div>` : ''}
-        ${t.need && t.need.length ? `<div class="need"><h4>What your CHI team needs from you</h4><ul>${t.need.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}
+        ${t.need && t.need.length ? `<div class="need"><h4>What your CHI team needs from you</h4><ul>${t.need.map(n=>fillSmart(n)).filter(Boolean).map(n=>`<li>${n}</li>`).join('')}</ul></div>` : ''}
         ${url ? `<a class="act" href="${url}" target="_blank" rel="noopener">${esc(t.act.label)}</a>`
               : `<button class="act${t.act.kind==='answer'?' ghost':''}" data-act="${t.act.kind}">${esc(t.act.label)}</button>`}
       </div>
