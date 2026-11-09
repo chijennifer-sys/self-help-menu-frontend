@@ -239,7 +239,7 @@ const T = [
  clock:{l:'This has a legal clock', t:'Ten days from the day you move.'},
  need:['Full new address with unit number','The date you moved','Who else is living there, if CHI placed them too'],
  act:{label:'Update my address', kind:'form'},
- w:{trigger:'Form submitted', fires:'Address change confirmation', captures:'New address, move date, roommates', notify:'Coordinator, SEVIS update task', log:'Housing Approved Address updated. Case row if the move is within 10 days of arrival', status:'build', note:'No form exists yet. Use the exact required wording about being denied entry, unchanged.'}},
+ w:{trigger:'Form submitted', fires:'Address change confirmation', captures:'New address, move date, roommates', notify:'Coordinator, SEVIS update task', log:'Housing Approved Address updated. Case row if the move is within 10 days of arrival', status:'build', note:'No form exists yet.'}},
 {s:'work', q:'I am not getting enough hours', sub:'Low hours, slow weeks, 32 hours', r:'Team', mo:['intervention','Intervention Required, but only after three short weeks and only with the stubs attached.'], g:'My hours and my pay', ic:'clock', k:'hours not enough slow week 32 hours short cut shifts schedule empty labor day new year holiday drop weather rain smoke shifts cancelled sent home early less hours at will',
  you:"You are at <b>{employer|your employer}</b> in <b>{location|your town}</b>.[[ You are on day <b>{day}</b> of <b>{len}</b>.]]",
  lead:"Your employer agreed to about 32 hours a week as a minimum across the season. Not every single week.",
