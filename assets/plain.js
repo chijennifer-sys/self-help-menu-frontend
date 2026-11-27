@@ -134,8 +134,8 @@ const PLAIN = {
 },
 'How do I get to work': {
   lead:'Ask how other people in your housing get to work.',
-  steps:['Check the last bus before a late shift.','Employer bus late? Tell your manager the same day.','A transport fee should match what you signed.','On a bike or scooter, wear a helmet.'],
-  watch:'Unsafe driving? Write down the time and tell your manager.'
+  steps:['Check the last bus before a late shift.','Employer bus late or unsafe? Tell your manager the same day.','A transport fee should match what you signed.','Scooters are strongly discouraged.'],
+  watch:'Helmet, traffic laws, lights, sober, and a marked spot. After a crash, open the accident tile.'
 },
 'I need casino fingerprinting': {
   lead:'CHI books casino fingerprinting. You cannot start until it clears.',
@@ -230,7 +230,7 @@ const PLAIN = {
 'I am sick or I am hurt': {
   lead:'Not an emergency? Do not start at the emergency room.',
   steps:['Start with free Teladoc in the USA.','Call 1-800-835-2362. ZIP code 46208.','A walk-in clinic is 0 dollars. Urgent care is 25.','Do not pay a bill yourself. Send it through the Student Zone.'],
-  watch:'A real emergency: call 911. An ER starts at 350 dollars.'
+  watch:'A real emergency: call 911. At the ER, pay 250 dollars plus 350.'
 },
 'I want to see a doctor': {
   lead:'Start with free Teladoc, after your cover has started.',
@@ -245,7 +245,7 @@ const PLAIN = {
 'Where do I find my insurance card': {
   lead:'Download the card from the Envisage Student Zone.',
   steps:['Save it on your phone and print one copy.','The plan is UnitedHealthcare Options PPO, run by IMG.','Show the card at every visit.','Cannot log in? Open Still need help and say what you tried.'],
-  watch:'Walk-in is 0 dollars. Urgent care is 25. The ER adds 350.'
+  watch:'Walk-in is 0 dollars. Urgent care is 25. At the ER, pay 250 plus 350.'
 },
 'I feel unsafe or I am being harassed': {
   lead:'In danger now? Call 911. Then call 1-800-432-4643, ext. 0.',
@@ -305,17 +305,17 @@ const PLAIN = {
 'When do I have to leave the United States': {
   lead:'You cannot extend your J-1 or your DS-2019.',
   steps:['The grace period starts on your last day of work.','You may stay up to 30 days after that day.','You cannot work in the grace period.','Leave the country, and you cannot come back on this visa.'],
-  watch:'Insurance ends on your program end date, not when the grace period ends.'
+  watch:'Insurance ends on your DS end date. It does not cover the grace period.'
 },
 'Can I travel before I go home': {
   lead:'A trip outside the U.S. must bring you back before your program end date.',
-  steps:['Use the other travel tile for the signature steps.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.','After your last work day, travel inside the U.S. only.'],
-  watch:'Leave during the grace period and you cannot come back.'
+  steps:['Use the other travel tile for the signature.','Get a written yes from your employer.','Request it 2 weeks ahead.','After your last work day, stay inside the U.S.'],
+  watch:'Leave in the grace period and you cannot come back. Insurance does not cover those days.'
 },
 'How do I extend my insurance for my travel period': {
-  lead:'Cover ends on your program end date. The grace period does not extend it.',
-  steps:['Ask before that date.','The fee is 50 dollars.','Pay by card before your program end date.','Use the email form on this page. It goes to CHI.'],
-  watch:'After the cover stops, it usually cannot be added back.'
+  lead:'Cover ends on your DS end date.',
+  steps:['Cover starts 7 days before your DS start date.','The grace period is not covered.','Any day after the end date needs a supplement.','The fee is 50 dollars. Use the form on this page.'],
+  watch:'Pay by card before your end date. Email the CHI main office: chiwt@chinet.org.'
 },
 'How do I get my final paycheck': {
   lead:'Ask payroll before your last shift how the last pay will reach you.',
