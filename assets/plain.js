@@ -134,8 +134,8 @@ const PLAIN = {
 },
 'How do I get to work': {
   lead:'Ask how other people in your housing get to work.',
-  steps:['Check the last bus before a late shift.','Employer bus late? Tell your manager the same day.','A transport fee should match what you signed.','On a bike or scooter, wear a helmet.'],
-  watch:'Unsafe driving? Write down the time and tell your manager.'
+  steps:['Check the last bus before a late shift.','Employer bus late or unsafe? Tell your manager the same day.','A transport fee should match what you signed.','Scooters are strongly discouraged.'],
+  watch:'Helmet, traffic laws, lights, sober, and a marked spot. After a crash, open the accident tile.'
 },
 'I need casino fingerprinting': {
   lead:'CHI books casino fingerprinting. You cannot start until it clears.',

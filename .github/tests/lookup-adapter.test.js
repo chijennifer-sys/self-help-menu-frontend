@@ -2228,6 +2228,22 @@ test('fifteen student journeys land on a concrete next step', async () => {
   assert.equal(/72 hours|about a week/i.test(page.els.view.innerHTML), false);
 });
 
+test('scooter rides stay discouraged and link to the accident form', async () => {
+  const page = await loadPage({
+    endpoint: 'https://lookup.test/exec',
+    href: 'https://example.test/menu/',
+    handler() { throw new Error('a scooter rule must not look anyone up'); }
+  });
+  page.sandbox.setMe({ sid: '10001', first: 'Ada', employer: 'Aramark', location: 'Ocean City, NJ' });
+  ['I feel unsafe or I am being harassed', 'How do I get to work'].forEach(q => {
+    page.sandbox.openQuestion(q);
+    const html = page.els.view.innerHTML;
+    assert.match(html, /Scooters are strongly discouraged/);
+    assert.match(html, /Wear a helmet every time|Helmet, traffic laws/);
+    assert.match(html, /data-q="I was in an accident"|accident tile/);
+  });
+});
+
 test('a U.S. return date must be before the DS end and after departure', async () => {
   const page = await loadPage({
     endpoint: 'https://lookup.test/exec',
