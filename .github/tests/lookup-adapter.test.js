@@ -2049,9 +2049,9 @@ test('the top questions find the right tile in the first three results', async (
   assert.match(page.els.view.innerHTML, /Some people find weeks 3 and 4/);
   assert.match(page.els.view.innerHTML, /You are in weeks 3 or 4/);
   page.sandbox.openQuestion('I am sick or I am hurt');
-  assert.match(page.els.view.innerHTML, /Check your insurance card or plan for your exact cost|Check your card for the exact cost/);
-  assert.match(page.els.view.innerHTML, /350/);
-  assert.match(page.els.view.innerHTML, /25/);
+  assert.match(page.els.view.innerHTML, /250 dollars, plus 350 dollars/);
+  assert.match(page.els.view.innerHTML, /walk-in clinic is 0 dollars/i);
+  assert.match(page.els.view.innerHTML, /Urgent care is 25 dollars/);
 });
 
 test('staff emails lead with the decision facts and phases pick six tiles', async () => {

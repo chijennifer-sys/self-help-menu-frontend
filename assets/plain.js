@@ -230,7 +230,7 @@ const PLAIN = {
 'I am sick or I am hurt': {
   lead:'Not an emergency? Do not start at the emergency room.',
   steps:['Start with free Teladoc in the USA.','Call 1-800-835-2362. ZIP code 46208.','A walk-in clinic is 0 dollars. Urgent care is 25.','Do not pay a bill yourself. Send it through the Student Zone.'],
-  watch:'A real emergency: call 911. An ER starts at 350 dollars.'
+  watch:'A real emergency: call 911. At the ER, pay 250 dollars plus 350.'
 },
 'I want to see a doctor': {
   lead:'Start with free Teladoc, after your cover has started.',
@@ -245,7 +245,7 @@ const PLAIN = {
 'Where do I find my insurance card': {
   lead:'Download the card from the Envisage Student Zone.',
   steps:['Save it on your phone and print one copy.','The plan is UnitedHealthcare Options PPO, run by IMG.','Show the card at every visit.','Cannot log in? Open Still need help and say what you tried.'],
-  watch:'Walk-in is 0 dollars. Urgent care is 25. The ER adds 350.'
+  watch:'Walk-in is 0 dollars. Urgent care is 25. At the ER, pay 250 plus 350.'
 },
 'I feel unsafe or I am being harassed': {
   lead:'In danger now? Call 911. Then call 1-800-432-4643, ext. 0.',
