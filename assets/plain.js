@@ -305,17 +305,17 @@ const PLAIN = {
 'When do I have to leave the United States': {
   lead:'You cannot extend your J-1 or your DS-2019.',
   steps:['The grace period starts on your last day of work.','You may stay up to 30 days after that day.','You cannot work in the grace period.','Leave the country, and you cannot come back on this visa.'],
-  watch:'Insurance ends on your program end date, not when the grace period ends.'
+  watch:'Insurance ends on your DS end date. It does not cover the grace period.'
 },
 'Can I travel before I go home': {
   lead:'A trip outside the U.S. must bring you back before your program end date.',
-  steps:['Use the other travel tile for the signature steps.','Get a written yes from your employer.','Request a travel signature 2 weeks ahead.','After your last work day, travel inside the U.S. only.'],
-  watch:'Leave during the grace period and you cannot come back.'
+  steps:['Use the other travel tile for the signature.','Get a written yes from your employer.','Request it 2 weeks ahead.','After your last work day, stay inside the U.S.'],
+  watch:'Leave in the grace period and you cannot come back. Insurance does not cover those days.'
 },
 'How do I extend my insurance for my travel period': {
-  lead:'Cover ends on your program end date. The grace period does not extend it.',
-  steps:['Ask before that date.','The fee is 50 dollars.','Pay by card before your program end date.','Use the email form on this page. It goes to CHI.'],
-  watch:'After the cover stops, it usually cannot be added back.'
+  lead:'Cover ends on your DS end date.',
+  steps:['Cover starts 7 days before your DS start date.','The grace period is not covered.','Any day after the end date needs a supplement.','The fee is 50 dollars. Use the form on this page.'],
+  watch:'Pay by card before your end date. The form writes to chiwt@chinet.org.'
 },
 'How do I get my final paycheck': {
   lead:'Ask payroll before your last shift how the last pay will reach you.',

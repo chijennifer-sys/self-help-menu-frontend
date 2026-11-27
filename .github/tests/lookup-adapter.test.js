@@ -1101,12 +1101,12 @@ test('training deck facts stay on the existing tiles', async () => {
   page.sandbox.openQuestion('When do I have to leave the United States');
   assert.match(page.els.view.innerHTML, /up to 30 days/);
   assert.match(page.els.view.innerHTML, /cannot work/);
-  assert.match(page.els.view.innerHTML, /Consider travel insurance/);
+  assert.match(page.els.view.innerHTML, /does not cover the grace period/);
   assert.equal(page.els.view.innerHTML.includes('undefined'), false);
   page.sandbox.setMe({ dsStart: '2026-06-01', dsEnd: '2026-09-15', season: 'Summer 2026' });
   page.sandbox.openQuestion('When do I have to leave the United States');
   assert.match(page.els.view.innerHTML, new RegExp(expectF('2026-09-15').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(page.els.view.innerHTML, /Consider travel insurance/);
+  assert.match(page.els.view.innerHTML, /does not cover the grace period/);
 
   ['What documents do I need', 'I was in an accident', 'I feel unsafe or I am being harassed', 'I lost my passport or another document'].forEach(q => {
     page.sandbox.openQuestion(q);

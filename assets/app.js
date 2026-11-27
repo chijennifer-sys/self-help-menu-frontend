@@ -1133,14 +1133,14 @@ function formSpec(t){
 addAsk(['How do I extend my insurance for my travel period'], {
   topic:'Insurance Extension Request', to:'chiwt', cc:'coordinator',
   rules:[
-    'Ask before your program end date.',
+    'A supplement is needed for any days after your program end date.',
     'The fee is 50 dollars. Pay by card before your program end date.',
     'Do not put a card number in this email.',
-    'The last day of cover can be at most 30 days after your program end date.'
+    'The last day of this supplement can be at most 30 days after your program end date.'
   ],
-  fixed:['Fee: 50 dollars. Pay by card before your program end date.'],
+  fixed:['Supplement for days after the program end date. Fee: 50 dollars. Pay by card before your program end date.'],
   fields:[
-    {id:'coverEnd', mail:'Coverage end date', label:'What date should the cover end?', type:'date', required:true, min:'dsEndPlus1', max:'dsEndPlus30'},
+    {id:'coverEnd', mail:'Coverage end date', label:'What date should the supplement end?', type:'date', required:true, min:'dsEndPlus1', max:'dsEndPlus30'},
     {id:'where', mail:'Where you will travel', label:'Which U.S. cities or states will you visit?', type:'text', required:true},
     {id:'depart', mail:'Departure date from the USA', label:'What date do you leave the USA?', type:'date', required:true},
     {id:'canPay', mail:'Can pay by card in time', label:'Can you pay the 50 dollars by card before your program end date?', type:'choice', required:true, options:['Yes', 'No']}
