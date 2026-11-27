@@ -315,7 +315,7 @@ const PLAIN = {
 'How do I extend my insurance for my travel period': {
   lead:'Cover ends on your DS end date.',
   steps:['Cover starts 7 days before your DS start date.','The grace period is not covered.','Any day after the end date needs a supplement.','The fee is 50 dollars. Use the form on this page.'],
-  watch:'Pay by card before your end date. The form writes to chiwt@chinet.org.'
+  watch:'Pay by card before your end date. Email the CHI main office: chiwt@chinet.org.'
 },
 'How do I get my final paycheck': {
   lead:'Ask payroll before your last shift how the last pay will reach you.',
